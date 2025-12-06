@@ -9,7 +9,14 @@ export default function DaysStreak({ days = [], totalDays = 7 }) {
     <View style={styles.container}>
       <View style={styles.row}>
         {padded.map((active, i) => (
-          <View key={i} style={[styles.box, active ? styles.boxActive : styles.boxInactive]}>
+          <View
+            key={i}
+            style={[
+              styles.box,
+              active ? styles.boxActive : styles.boxInactive,
+              i !== padded.length - 1 && { marginRight: 6 },
+            ]}
+          >
             <Text style={[styles.boxText, active ? styles.boxTextActive : styles.boxTextInactive]}>{['D','S','T','Q','Q','S','S'][i]}</Text>
           </View>
         ))}
@@ -21,7 +28,7 @@ export default function DaysStreak({ days = [], totalDays = 7 }) {
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center' },
-  row: { flexDirection: 'row', gap: 6 },
+  row: { flexDirection: 'row' },
   box: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   boxActive: { backgroundColor: '#16A34A' },
   boxInactive: { backgroundColor: '#F3F4F6' },

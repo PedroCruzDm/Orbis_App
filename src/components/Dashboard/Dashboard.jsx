@@ -1,8 +1,11 @@
 import React from 'react';
-import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import StatsCard from './StatsCard';
 
 export default function Dashboard() {
+  const { width } = useWindowDimensions();
+  const columns = width >= 900 ? 3 : width >= 520 ? 2 : 1;
+  const itemWidth = columns === 1 ? '100%' : columns === 2 ? '48%' : '32%';
   // sample data
   const stats = [
     { key: 'prod', title: 'Produtividade', value: 92, max: 100, description: 'Hoje', type: 'gauge' },
@@ -18,20 +21,23 @@ export default function Dashboard() {
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={{ padding: 16 }}>
-      <View style={styles.hero}>
+      <View style={[styles.hero, { flexDirection: width < 520 ? 'column' : 'row', alignItems: width < 520 ? 'flex-start' : 'center' }]}>
         <View>
           <Text style={styles.heroTitle}>Boa tarde! 👋</Text>
           <Text style={styles.heroSub}>Você está tendo um ótimo dia produtivo. Continue assim!</Text>
         </View>
-        <View style={styles.heroRight}>
+        <View style={[styles.heroRight, width < 520 && { marginTop: 12 }]}> 
           <Text style={styles.heroPercent}>92%</Text>
           <Text style={styles.heroLabel}>Produtividade</Text>
         </View>
       </View>
 
       <View style={styles.grid}>
-        {stats.map((s) => (
-          <View key={s.key} style={styles.gridItem}>
+        {stats.map((s, idx) => (
+          <View
+            key={s.key}
+            style={[styles.gridItem, { width: itemWidth, marginRight: (columns > 1 && (idx % columns) !== columns - 1) ? 12 : 0 }]}
+          >
             <StatsCard title={s.title} value={s.value} max={s.max} description={s.description} type={s.type} days={s.days} />
           </View>
         ))}
@@ -61,8 +67,8 @@ const styles = StyleSheet.create({
   heroRight: { alignItems: 'center' },
   heroPercent: { color: '#fff', fontSize: 28, fontWeight: '800' },
   heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 12 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 },
-  gridItem: { width: '48%' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 },
+  gridItem: { marginBottom: 12 },
   recentCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
   recentItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
