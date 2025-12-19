@@ -10,6 +10,7 @@ import {
     UIManager,
     useWindowDimensions,
 } from 'react-native';
+import theme from '../theme';
 
 export default function Home_Apresentacao({ onCreateAccount, onLogin }) {
     // Forçar tema claro conforme solicitado
@@ -157,73 +158,150 @@ export default function Home_Apresentacao({ onCreateAccount, onLogin }) {
 }
 
 function createStyles(dark, width) {
-    const bg = dark ? '#0F172A' : '#FFFFFF';
-    const muted = dark ? '#94A3B8' : '#6B7280';
-    const primary = '#2563EB';
+    const bg = dark ? theme.colors.background.secondary : theme.colors.background.primary;
+    const muted = theme.colors.text.secondary;
+    const primary = theme.colors.primary[500];
 
     const isSmall = width < 600;
 
     return StyleSheet.create({
         container: {
-            padding: 20,
+            padding: theme.spacing.lg,
             backgroundColor: bg,
         },
-        headerSpacer: { height: 8 },
+        headerSpacer: { height: theme.spacing.sm },
         heroSection: {
             flexDirection: isSmall ? 'column' : 'row',
             flexWrap: 'wrap',
-            marginBottom: 20,
+            marginBottom: theme.spacing.lg,
         },
         heroContent: {
             flex: isSmall ? undefined : 1,
             width: isSmall ? '100%' : undefined,
             minWidth: isSmall ? undefined : 260,
-            paddingRight: isSmall ? 0 : 12,
+            paddingRight: isSmall ? 0 : theme.spacing.md,
             justifyContent: 'center',
-            marginBottom: isSmall ? 12 : 0,
+            marginBottom: isSmall ? theme.spacing.md : 0,
         },
-        heroTitle: { fontSize: 28, fontWeight: '800', color: '#1E3A8A', marginBottom: 8 },
-        heroDescription: { color: muted, fontSize: 15, lineHeight: 20, marginBottom: 12 },
+        heroTitle: { 
+            fontSize: theme.typography.fontSize['3xl'], 
+            fontWeight: theme.typography.fontWeight.extrabold, 
+            color: theme.colors.primary[800], 
+            marginBottom: theme.spacing.sm 
+        },
+        heroDescription: { 
+            color: muted, 
+            fontSize: theme.typography.fontSize.base, 
+            lineHeight: theme.typography.lineHeight.relaxed, 
+            marginBottom: theme.spacing.md 
+        },
         heroButtons: { flexDirection: 'row' },
-        btnPrimary: { backgroundColor: primary, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginRight: 8 },
-        btnPrimaryText: { color: '#fff', fontWeight: '700' },
-        btnSecondary: { borderWidth: 1, borderColor: primary, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10 },
-        btnSecondaryText: { color: primary, fontWeight: '700' },
+        btnPrimary: { 
+            backgroundColor: primary, 
+            paddingVertical: theme.spacing.md, 
+            paddingHorizontal: theme.spacing.lg, 
+            borderRadius: theme.borderRadius.lg, 
+            marginRight: theme.spacing.sm,
+            ...theme.shadows.md,
+        },
+        btnPrimaryText: { 
+            color: theme.colors.text.inverse, 
+            fontWeight: theme.typography.fontWeight.bold 
+        },
+        btnSecondary: { 
+            borderWidth: 1, 
+            borderColor: primary, 
+            paddingVertical: theme.spacing.md, 
+            paddingHorizontal: theme.spacing.lg, 
+            borderRadius: theme.borderRadius.lg 
+        },
+        btnSecondaryText: { 
+            color: primary, 
+            fontWeight: theme.typography.fontWeight.bold 
+        },
         heroVisual: { width: isSmall ? '100%' : 220, alignItems: 'center', justifyContent: 'center' },
-        floatingRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginVertical: 6 },
+        floatingRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginVertical: theme.spacing.xs },
         floatingItem: { alignItems: 'center', width: isSmall ? '48%' : '48%' },
         floatIcon: { fontSize: 22 },
-        floatText: { color: muted, fontSize: 12, marginTop: 4 },
-        orbisVisual: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center', position: 'relative', marginVertical: 8 },
-        orbitRing: { width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: '#D1D5DB', position: 'absolute' },
+        floatText: { color: muted, fontSize: theme.typography.fontSize.xs, marginTop: theme.spacing.xs },
+        orbisVisual: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center', position: 'relative', marginVertical: theme.spacing.sm },
+        orbitRing: { width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: theme.colors.border.default, position: 'absolute' },
         centerPlanet: { fontSize: 36 },
         satellite: { position: 'absolute', right: 8, top: 8 },
-        featuresSection: { marginTop: 12 },
-        featureCard: { flexDirection: isSmall ? 'column' : 'row', marginBottom: 16, backgroundColor: dark ? '#071127' : '#F8FAFF', borderRadius: 12, padding: 12 },
+        featuresSection: { marginTop: theme.spacing.md },
+        featureCard: { 
+            flexDirection: isSmall ? 'column' : 'row', 
+            marginBottom: theme.spacing.lg, 
+            backgroundColor: theme.colors.card, 
+            borderRadius: theme.borderRadius.xl, 
+            padding: theme.spacing.lg,
+            ...theme.shadows.sm,
+        },
         featureCardReverse: { flexDirection: isSmall ? 'column' : 'row-reverse' },
-        featureContent: { flex: 1, padding: 8 },
-        featureTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 6 },
-        featureText: { color: muted },
-        featureVisualSmall: { width: isSmall ? '100%' : 140, alignItems: 'center', justifyContent: 'center', padding: 8, marginTop: isSmall ? 8 : 0 },
-        calendarPreview: { backgroundColor: '#fff', padding: 8, borderRadius: 8, width: '100%' },
-        calendarHeader: { fontWeight: '700', marginBottom: 8 },
+        featureContent: { flex: 1, padding: theme.spacing.sm },
+        featureTitle: { 
+            fontSize: theme.typography.fontSize.lg, 
+            fontWeight: theme.typography.fontWeight.bold, 
+            color: theme.colors.text.primary, 
+            marginBottom: theme.spacing.xs 
+        },
+        featureText: { color: muted, fontSize: theme.typography.fontSize.sm },
+        featureVisualSmall: { 
+            width: isSmall ? '100%' : 140, 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            padding: theme.spacing.sm, 
+            marginTop: isSmall ? theme.spacing.sm : 0 
+        },
+        calendarPreview: { backgroundColor: theme.colors.background.primary, padding: theme.spacing.sm, borderRadius: theme.borderRadius.md, width: '100%' },
+        calendarHeader: { fontWeight: theme.typography.fontWeight.bold, marginBottom: theme.spacing.sm },
         calendarEvents: {},
-        event: { paddingVertical: 6 },
+        event: { paddingVertical: theme.spacing.xs },
         eventWork: {},
         eventFocus: {},
         eventFlex: {},
         sleepPreview: { alignItems: 'center' },
-        sleepCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-        sleepQuality: { color: '#fff', fontWeight: '800', fontSize: 18 },
-        sleepLabel: { color: '#fff', fontSize: 12 },
+        sleepCircle: { 
+            width: 80, 
+            height: 80, 
+            borderRadius: theme.borderRadius.full, 
+            backgroundColor: primary, 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            marginBottom: theme.spacing.sm 
+        },
+        sleepQuality: { 
+            color: theme.colors.text.inverse, 
+            fontWeight: theme.typography.fontWeight.extrabold, 
+            fontSize: theme.typography.fontSize.lg 
+        },
+        sleepLabel: { 
+            color: theme.colors.text.inverse, 
+            fontSize: theme.typography.fontSize.xs 
+        },
         sleepCycles: { flexDirection: 'row' },
         focusTimer: { alignItems: 'center' },
-        timerText: { fontSize: 20, fontWeight: '700' },
+        timerText: { fontSize: theme.typography.fontSize.xl, fontWeight: theme.typography.fontWeight.bold },
         dashboardPreview: { alignItems: 'center' },
-        dashboardHeader: { fontWeight: '700' },
-        philosophySection: { marginTop: 20, padding: 12, backgroundColor: dark ? '#071127' : '#FFFFFF', borderRadius: 12 },
-        philosophyTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
-        philosophyText: { color: muted, marginBottom: 12 },
+        dashboardHeader: { fontWeight: theme.typography.fontWeight.bold },
+        philosophySection: { 
+            marginTop: theme.spacing.xl, 
+            padding: theme.spacing.lg, 
+            backgroundColor: theme.colors.card, 
+            borderRadius: theme.borderRadius.xl,
+            ...theme.shadows.md,
+        },
+        philosophyTitle: { 
+            fontSize: theme.typography.fontSize.xl, 
+            fontWeight: theme.typography.fontWeight.extrabold, 
+            marginBottom: theme.spacing.sm,
+            color: theme.colors.text.primary,
+        },
+        philosophyText: { 
+            color: muted, 
+            marginBottom: theme.spacing.md,
+            fontSize: theme.typography.fontSize.base,
+        },
         ctaRow: { flexDirection: isSmall ? 'column' : 'row', justifyContent: 'flex-start' },
     });
 }

@@ -1,5 +1,5 @@
-import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import theme from '../../../theme';
 
 export default function DaysStreak({ days = [], totalDays = 7 }) {
   // days: array of booleans length <= totalDays
@@ -29,11 +29,24 @@ export default function DaysStreak({ days = [], totalDays = 7 }) {
 const styles = StyleSheet.create({
   container: { alignItems: 'center' },
   row: { flexDirection: 'row' },
-  box: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  boxActive: { backgroundColor: '#16A34A' },
-  boxInactive: { backgroundColor: '#F3F4F6' },
-  boxText: { fontSize: 12, fontWeight: '600' },
-  boxTextActive: { color: '#fff' },
-  boxTextInactive: { color: '#6B7280' },
-  total: { marginTop: 8, fontSize: 12, color: '#6B7280' },
+  box: { 
+    width: 34, 
+    height: 34, 
+    borderRadius: theme.borderRadius.md, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  boxActive: { backgroundColor: theme.colors.success[500] },
+  boxInactive: { backgroundColor: theme.colors.gray[100] },
+  boxText: { 
+    fontSize: theme.typography.fontSize.xs, 
+    fontWeight: theme.typography.fontWeight.semibold 
+  },
+  boxTextActive: { color: theme.colors.text.inverse },
+  boxTextInactive: { color: theme.colors.text.secondary },
+  total: { 
+    marginTop: theme.spacing.sm, 
+    fontSize: theme.typography.fontSize.xs, 
+    color: theme.colors.text.primary 
+  },
 });

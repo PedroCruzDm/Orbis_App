@@ -1,29 +1,24 @@
-import React from 'react';
-import { ScrollView, View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import StatsCard from './StatsCard';
+import { dashboardStats as stats, dashboardRecent as recent, dashboardSleepScoreToday as sleepScoreToday, dashboardWeekly as weekly, dashboardWeeklyDays as weeklyDays, dashboardWeeklyTargetFocusMinutes as weeklyTargetFocusMinutes } from '../../hooks/Users/data';
+import SleepSummaryCard from './SleepSummaryCard';
+import WeeklyPerformanceChart from './WeeklyPerformanceChart';
+import theme from '../../theme';
 
 export default function Dashboard() {
   const { width } = useWindowDimensions();
   const columns = width >= 900 ? 3 : width >= 520 ? 2 : 1;
   const itemWidth = columns === 1 ? '100%' : columns === 2 ? '48%' : '32%';
   // sample data
-  const stats = [
-    { key: 'prod', title: 'Produtividade', value: 92, max: 100, description: 'Hoje', type: 'gauge' },
-    { key: 'foco', title: 'Tempo de Foco', value: 180, max: 240, description: 'minutos hoje', type: 'gauge' },
-    { key: 'dias', title: 'Dias Consecutivos', value: 5, max: 7, description: 'Sequência ativa', type: 'days', days: [true,true,true,true,true,false,false] },
-  ];
+  const [period, setPeriod] = useState('Dia');
 
-  const recent = [
-    { id: 1, title: 'Sessão de foco concluída', time: '14:30', duration: '45 min' },
-    { id: 2, title: 'Relatório mensal finalizado', time: '13:15', duration: '30 min' },
-    { id: 3, title: 'Planejamento do dia', time: '09:30', duration: '15 min' },
-  ];
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={{ padding: 16 }}>
       <View style={[styles.hero, { flexDirection: width < 520 ? 'column' : 'row', alignItems: width < 520 ? 'flex-start' : 'center' }]}>
         <View>
-          <Text style={styles.heroTitle}>Boa tarde! 👋</Text>
+          <Text style={styles.heroTitle}>Boa tarde (usuario)! 👋</Text>
           <Text style={styles.heroSub}>Você está tendo um ótimo dia produtivo. Continue assim!</Text>
         </View>
         <View style={[styles.heroRight, width < 520 && { marginTop: 12 }]}> 
@@ -32,47 +27,151 @@ export default function Dashboard() {
         </View>
       </View>
 
-      <View style={styles.grid}>
-        {stats.map((s, idx) => (
-          <View
-            key={s.key}
-            style={[styles.gridItem, { width: itemWidth, marginRight: (columns > 1 && (idx % columns) !== columns - 1) ? 12 : 0 }]}
+      <View style={styles.segmentedRow}>
+        {['Dia', 'Semana'].map((opt) => (
+          <TouchableOpacity
+            key={opt}
+            onPress={() => setPeriod(opt)}
+            style={[
+              styles.segmentButton,
+              period === opt && { backgroundColor: theme.colors.primary[700] },
+            ]}
           >
-            <StatsCard title={s.title} value={s.value} max={s.max} description={s.description} type={s.type} days={s.days} />
-          </View>
+            <Text style={[
+              styles.segmentText,
+              period === opt && { color: theme.colors.text.inverse },
+            ]}>{opt}</Text>
+          </TouchableOpacity>
         ))}
       </View>
 
-      <View style={styles.recentCard}>
-        <Text style={styles.sectionTitle}>Atividade Recentes</Text>
-        {recent.map((r) => (
-          <View key={r.id} style={styles.recentItem}>
-            <View>
-              <Text style={styles.recentTitle}>{r.title}</Text>
-              <Text style={styles.recentTime}>{r.time}</Text>
-            </View>
-            <Text style={styles.recentDuration}>{r.duration}</Text>
+      {period === 'Dia' ? (
+        <>
+          <View style={[styles.gridItem, { width: '100%' }]}> 
+            <SleepSummaryCard score={sleepScoreToday} avg={weekly.avgSleepScore} />
           </View>
-        ))}
-      </View>
+
+          <View style={styles.grid}>
+            {stats.map((s, idx) => (
+              <View
+                key={s.key}
+                style={[styles.gridItem, { width: itemWidth, marginRight: (columns > 1 && (idx % columns) !== columns - 1) ? 12 : 0 }]}
+              >
+                <StatsCard title={s.title} value={s.value} max={s.max} description={s.description} type={s.type} days={s.days} />
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.recentCard}>
+            <Text style={styles.sectionTitle}>Atividade Recentes</Text>
+            {recent.map((r) => (
+              <View key={r.id} style={styles.recentItem}>
+                <View>
+                  <Text style={styles.recentTitle}>{r.title}</Text>
+                  <Text style={styles.recentTime}>{r.time}</Text>
+                </View>
+                <Text style={styles.recentDuration}>{r.duration}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        <View style={[styles.gridItem, { width: '100%' }]}> 
+          <WeeklyPerformanceChart days={weeklyDays} targetFocusMinutes={weeklyTargetFocusMinutes} />
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { backgroundColor: '#F3F4F6' },
-  hero: { backgroundColor: '#0EA5A4', padding: 16, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  heroTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  heroSub: { color: 'rgba(255,255,255,0.9)', marginTop: 6 },
+  page: { backgroundColor: theme.colors.background.primary },
+  hero: { 
+    backgroundColor: theme.colors.primary[700], 
+    padding: theme.spacing.lg, 
+    borderRadius: theme.borderRadius.xl, 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: theme.spacing.lg,
+  },
+  heroTitle: { 
+    color: theme.colors.text.inverse, 
+    fontSize: theme.typography.fontSize.xl, 
+    fontWeight: theme.typography.fontWeight.bold 
+  },
+  heroSub: { 
+    color: theme.colors.text.inverse, 
+    opacity: theme.opacity[90],
+    marginTop: theme.spacing.xs,
+    fontSize: theme.typography.fontSize.sm,
+  },
   heroRight: { alignItems: 'center' },
-  heroPercent: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  heroLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 12 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 },
-  gridItem: { marginBottom: 12 },
-  recentCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
-  recentItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  recentTitle: { fontSize: 14, fontWeight: '600' },
-  recentTime: { fontSize: 12, color: '#6B7280' },
-  recentDuration: { fontSize: 12, color: '#6B7280' },
+  heroPercent: { 
+    color: theme.colors.text.inverse, 
+    fontSize: theme.typography.fontSize['3xl'], 
+    fontWeight: theme.typography.fontWeight.extrabold 
+  },
+  heroLabel: { 
+    color: theme.colors.text.inverse, 
+    opacity: theme.opacity[90],
+    fontSize: theme.typography.fontSize.xs,
+  },
+  segmentedRow: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.card,
+    padding: theme.spacing.xs,
+    borderRadius: theme.borderRadius.lg,
+    marginBottom: theme.spacing.md,
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: theme.spacing.sm,
+    alignItems: 'center',
+    borderRadius: theme.borderRadius.md,
+  },
+  segmentText: {
+    color: theme.colors.text.primary,
+    fontSize: theme.typography.fontSize.xs,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  grid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'space-between', 
+    marginBottom: theme.spacing.lg 
+  },
+  gridItem: { marginBottom: theme.spacing.md },
+  recentCard: { 
+    backgroundColor: theme.colors.card, 
+    padding: theme.spacing.lg, 
+    borderRadius: theme.borderRadius.xl,
+  },
+  sectionTitle: { 
+    fontSize: theme.typography.fontSize.lg, 
+    fontWeight: theme.typography.fontWeight.bold, 
+    marginBottom: theme.spacing.md,
+    color: theme.colors.text.primary,
+  },
+  recentItem: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingVertical: theme.spacing.sm, 
+    borderBottomWidth: 1, 
+    borderBottomColor: theme.colors.border.light,
+  },
+  recentTitle: { 
+    fontSize: theme.typography.fontSize.sm, 
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: theme.colors.text.primary,
+  },
+  recentTime: { 
+    fontSize: theme.typography.fontSize.xs, 
+    color: theme.colors.text.secondary,
+  },
+  recentDuration: { 
+    fontSize: theme.typography.fontSize.xs, 
+    color: theme.colors.text.secondary,
+  },
 });

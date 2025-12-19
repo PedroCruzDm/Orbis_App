@@ -1,15 +1,18 @@
 import React from 'react';
 import { SafeAreaView, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import theme from '../../theme';
 
 const ITEMS = [
-  { key: 'foco', label: 'Modo Foco', icon: '🎯' },
-  { key: 'sono', label: 'Modo Sono', icon: '🛌' },
-  { key: 'dashboard', label: 'Dashboard', icon: '🏠' },
-  { key: 'agenda', label: 'Agenda', icon: '📅' },
-  { key: 'ranking', label: 'Ranking', icon: '🏆' },
+  { key: 'foco', label: 'Modo Foco', icon: 'target' },
+  { key: 'sono', label: 'Modo Sono', icon: 'sleep' },
+  { key: 'dashboard', label: 'Dashboard', icon: 'home' },
+  { key: 'agenda', label: 'Agenda', icon: 'calendar' },
+  { key: 'ranking', label: 'Ranking', icon: 'trophy' },
 ];
 
 export default function Navbar({ current = 'dashboard', onNavigate = () => {} }) {
+
   return (
     <SafeAreaView style={styles.container} pointerEvents="box-none">
       <View style={styles.bar}>
@@ -25,12 +28,12 @@ export default function Navbar({ current = 'dashboard', onNavigate = () => {} })
             >
               {active ? (
                 <View style={[styles.iconWrap, styles.iconWrapActive]}> 
-                  <Text style={[styles.icon, styles.iconActive]}>{it.icon}</Text>
+                  <MaterialCommunityIcons name={it.icon} size={24} color="#e9e9e9ff" />
                   <Text style={styles.activeLabel}>{it.label}</Text>
                 </View>
               ) : (
                 <View style={styles.iconWrap}>
-                  <Text style={styles.icon}>{it.icon}</Text>
+                  <MaterialCommunityIcons name={it.icon} size={24} color="#0EA5A4" />
                 </View>
               )}
             </TouchableOpacity>
@@ -55,51 +58,44 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     height: 64,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(3, 77, 173, 0.92)',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.primary[600],
+    ...theme.shadows.lg,
   },
   item: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.xs,
   },
   icon: {
     fontSize: 20,
-    color: '#6B7280',
+    color: theme.colors.text.secondary,
   },
   iconActive: {
-    color: '#fff',
+    color: theme.colors.text.inverse,
     fontSize: 24,
   },
   iconWrap: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
   iconWrapActive: {
-    backgroundColor: '#5c8bf0ff',
+    backgroundColor: theme.colors.primary[500],
     width: 64,
     height: 64,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    ...theme.shadows.xl,
   },
   activeLabel: {
-    color: '#ffffff',
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '600',
+    color: theme.colors.text.inverse,
+    fontSize: theme.typography.fontSize.xs,
+    marginTop: theme.spacing.xs,
+    fontWeight: theme.typography.fontWeight.semibold,
     textAlign: 'center',
   },
 });

@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import theme from '../../../theme';
 
 export default function CircularGauge({ value = 0, max = 100, size = 80, strokeWidth = 6 }) {
   const percentage = Math.max(0, Math.min(100, Math.round((value / max) * 100)));
-  const color = percentage >= 80 ? '#16A34A' : percentage >= 50 ? '#2563EB' : '#F59E0B';
+  const color = percentage >= 80 ? theme.colors.success[500] : percentage >= 50 ? theme.colors.primary[500] : theme.colors.warning[500];
   const radius = size / 2;
 
   return (
@@ -43,6 +44,12 @@ const styles = StyleSheet.create({
   wrapper: { alignItems: 'center', justifyContent: 'center' },
   ring: { position: 'absolute' },
   fill: { alignItems: 'center', justifyContent: 'center' },
-  value: { fontSize: 18, fontWeight: '700' },
-  sub: { fontSize: 12, color: '#6B7280' },
+  value: { 
+    fontSize: theme.typography.fontSize.lg, 
+    fontWeight: theme.typography.fontWeight.bold 
+  },
+  sub: { 
+    fontSize: theme.typography.fontSize.xs, 
+    color: theme.colors.text.secondary 
+  },
 });

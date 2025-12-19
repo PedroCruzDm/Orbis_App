@@ -1,42 +1,46 @@
-import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { StyleSheet, View, Alert, Text } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import Header from './src/components/Header/header';
 import Navbar from './src/components/Navbar/navbar';
-import CadastroInicial from './src/components/CadastroInicial';
 import Dashboard from './src/components/Dashboard/Dashboard';
+import Modo_Foco from './src/components/Modo_Foco/Screens/main';
+import Agenda from './src/components/Agenda/Screens/main';
+import ModoSonoMain from './src/components/Modo_Sono/asset/main';
+
+function PlaceholderScreen({ title, description }) {
+  return (
+    <View style={styles.placeholder}>
+      <Text style={styles.placeholderTitle}>{title}</Text>
+      {description ? <Text style={styles.placeholderText}>{description}</Text> : null}
+    </View>
+  );
+}
 
 export default function App() {
-  const [screen, setScreen] = useState('home'); // 'home' | 'cadastro' | 'login'
+  const [screen, setScreen] = useState('dashboard'); // 'dashboard' | 'foco' | 'sono' | 'agenda' | 'ranking'
 
-  function handleCreate() {
-    setScreen('cadastro');
-  }
-
-  function handleLogin() {
-    // Placeholder: show simple alert or navigate to real login screen later
-    setScreen('login');
-    Alert.alert('Entrar', 'Tela de login ainda não implementada.');
-  }
+  const renderScreen = () => {
+    switch (screen) {
+      case 'dashboard':
+        return <Dashboard />;
+      case 'foco':
+        return <Modo_Foco />;
+      case 'sono':
+        return <ModoSonoMain />;
+      case 'agenda':
+        return <Agenda />;
+      case 'ranking':
+        return <PlaceholderScreen title="Ranking" description="Ranking e pontuação" />;
+      default:
+        return <Dashboard />;
+    }
+  };
 
   return (
     <View style={styles.container}>
       <Header />
-      {screen === 'home' && (
-        <>
-          <Navbar current="dashboard" onNavigate={(key) => Alert.alert('Navegar para', key)} />
-            <Dashboard />
-          
-        </>
-      )}
-
-      {screen === 'cadastro' && <CadastroInicial />}
-
-      {screen === 'login' && (
-        <View style={styles.placeholder}>
-          <Text style={styles.placeholderText}>Tela de login (a implementar)</Text>
-        </View>
-      )}
+      <View style={styles.content}>{renderScreen()}</View>
+      <Navbar current={screen} onNavigate={setScreen} />
     </View>
   );
 }
@@ -48,15 +52,23 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingBottom: 92, // leave space for bottom navbar
+    paddingBottom: 92, // espaço para a navbar inferior
   },
   placeholder: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  placeholderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
   },
   placeholderText: {
-    color: '#374151',
-    fontSize: 16,
+    color: '#4B5563',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
