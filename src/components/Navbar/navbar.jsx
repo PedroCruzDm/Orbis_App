@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   iconWrapActive: {
     backgroundColor: theme.colors.primary[500],
     width: 64,
-    height: 64,
+    height: 74,
     ...theme.shadows.xl,
   },
   activeLabel: {

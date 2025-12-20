@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, Text, Alert, ScrollView, Dimensions } from 'react-native';
 import Header from './src/components/Header/header';
 import Navbar from './src/components/Navbar/navbar';
 import Dashboard from './src/components/Dashboard/Dashboard';
 import Modo_Foco from './src/components/Modo_Foco/Screens/main';
 import Agenda from './src/components/Agenda/Screens/main';
 import ModoSonoMain from './src/components/Modo_Sono/asset/main';
+import { database, firebaseConfig } from './src/hooks/Firebase/config';
+
+
+Alert.alert('DB Config', JSON.stringify(database, null, 2));
+//console.log('Firebase Config:', firebaseConfig);
 
 function PlaceholderScreen({ title, description }) {
   return (
@@ -18,9 +23,19 @@ function PlaceholderScreen({ title, description }) {
 
 export default function App() {
   const [screen, setScreen] = useState('dashboard'); // 'dashboard' | 'foco' | 'sono' | 'agenda' | 'ranking'
+  const scrollRef = useRef(null);
+  const { width } = Dimensions.get('window');
 
-  const renderScreen = () => {
-    switch (screen) {
+  const SCREEN_ORDER = ['foco', 'sono', 'dashboard', 'agenda', 'ranking'];
+  const indexFromKey = (key) => {
+    const idx = SCREEN_ORDER.indexOf(key);
+    return idx >= 0 ? idx : 0;
+  };
+
+  const keyFromIndex = (idx) => SCREEN_ORDER[Math.min(Math.max(idx, 0), SCREEN_ORDER.length - 1)];
+
+  const renderPage = (key) => {
+    switch (key) {
       case 'dashboard':
         return <Dashboard />;
       case 'foco':
@@ -36,10 +51,36 @@ export default function App() {
     }
   };
 
+  // Scroll to selected page when screen changes (from navbar press)
+  useEffect(() => {
+    const i = indexFromKey(screen);
+    scrollRef.current?.scrollTo({ x: i * width, animated: true });
+  }, [screen, width]);
+
+  const handleScrollEnd = (e) => {
+    const x = e?.nativeEvent?.contentOffset?.x || 0;
+    const i = Math.round(x / width);
+    const key = keyFromIndex(i);
+    if (key && key !== screen) setScreen(key);
+  };
+
   return (
     <View style={styles.container}>
       <Header />
-      <View style={styles.content}>{renderScreen()}</View>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScrollEnd}
+        contentContainerStyle={{ alignItems: 'stretch' }}
+      >
+        {SCREEN_ORDER.map((key) => (
+          <View key={key} style={[styles.page, { width }]}> 
+            {renderPage(key)}
+          </View>
+        ))}
+      </ScrollView>
       <Navbar current={screen} onNavigate={setScreen} />
     </View>
   );
@@ -51,6 +92,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   content: {
+    flex: 1,
+    paddingBottom: 92, // espaço para a navbar inferior
+  },
+  page: {
     flex: 1,
     paddingBottom: 92, // espaço para a navbar inferior
   },

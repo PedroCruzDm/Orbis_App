@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal, TextInput, Switch, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import theme from '../../theme';
+import { auth, db } from '../../hooks/Firebase/config';
+import { createUserWithEmailAndPassword, updateProfile, signInWithEmailAndPassword } from 'firebase/auth';
+import { setDoc, doc } from 'firebase/firestore';
 
 const Header = () => {
     const [showUserModal, setShowUserModal] = useState(false);
@@ -10,9 +13,57 @@ const Header = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
+    // new signup fields
+    const [nickname, setNickname] = useState('');
+    const [age, setAge] = useState('');
+    const [initialEvent, setInitialEvent] = useState(''); // ex.: trabalho
+    const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+    const [gameXPEnabled, setGameXPEnabled] = useState(false);
+
     const openUser = () => setShowUserModal(true);
     const closeUser = () => setShowUserModal(false);
     const toggleMode = () => setAuthMode((m) => (m === 'login' ? 'signup' : 'login'));
+
+    const handleSubmit = async () => {
+        if (!email || !password) {
+            Alert.alert('Erro', 'Informe email e senha.');
+            return;
+        }
+
+        try {
+            if (authMode === 'signup') {
+                if (!name) {
+                    Alert.alert('Erro', 'Informe seu nome.');
+                    return;
+                }
+                const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+                if (name) {
+                    await updateProfile(cred.user, { displayName: name });
+                }
+
+                const uid = cred.user.uid;
+                await setDoc(doc(db, 'Usuarios', uid), {
+                    nome: name,
+                    apelido: nickname || null,
+                    email: email.trim(),
+                    idade: age ? Number(age) : null,
+                    eventoFixoInicial: initialEvent || null,
+                    receberNotificacoes: notificationsEnabled,
+                    gameXPAtivado: gameXPEnabled,
+                });
+
+                Alert.alert('Sucesso', 'Conta criada com sucesso!');
+                closeUser();
+            } else {
+                await signInWithEmailAndPassword(auth, email.trim(), password);
+                Alert.alert('Sucesso', 'Login realizado!');
+                closeUser();
+            }
+        } catch (err) {
+            console.log('Auth error:', err);
+            Alert.alert('Erro', err?.message ?? 'Falha na operação.');
+        }
+    };
 
     return (
         <View style={styles.header}>
@@ -34,16 +85,29 @@ const Header = () => {
                         <Text style={styles.modalTitle}>{authMode === 'login' ? 'Entrar' : 'Criar Conta'}</Text>
 
                         {authMode === 'signup' && (
-                            <View style={styles.inputWrap}>
-                                <Text style={styles.inputLabel}>Nome</Text>
-                                <TextInput
-                                    value={name}
-                                    onChangeText={setName}
-                                    placeholder="Seu nome"
-                                    placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                    style={styles.input}
-                                />
-                            </View>
+                            <>
+                                <View style={styles.inputWrap}>
+                                    <Text style={styles.inputLabel}>Nome</Text>
+                                    <TextInput
+                                        value={name}
+                                        onChangeText={setName}
+                                        placeholder="Seu nome"
+                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                        style={styles.input}
+                                    />
+                                </View>
+
+                                <View style={styles.inputWrap}>
+                                    <Text style={styles.inputLabel}>Apelido (opcional)</Text>
+                                    <TextInput
+                                        value={nickname}
+                                        onChangeText={setNickname}
+                                        placeholder="Exibição em ranking"
+                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                        style={styles.input}
+                                    />
+                                </View>
+                            </>
                         )}
 
                         <View style={styles.inputWrap}>
@@ -71,7 +135,50 @@ const Header = () => {
                             />
                         </View>
 
-                        <TouchableOpacity style={styles.primaryButton} onPress={() => { /* TODO: integrar auth */ closeUser(); }}>
+                        {authMode === 'signup' && (
+                            <>
+                                <View style={styles.inputWrap}>
+                                    <Text style={styles.inputLabel}>Idade (opcional)</Text>
+                                    <TextInput
+                                        value={age}
+                                        onChangeText={setAge}
+                                        placeholder="Ex.: 25"
+                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                        keyboardType="number-pad"
+                                        style={styles.input}
+                                    />
+                                </View>
+
+                                <View style={styles.inputWrap}>
+                                    <Text style={styles.inputLabel}>Evento Fixo Inicial (opcional)</Text>
+                                    <TextInput
+                                        value={initialEvent}
+                                        onChangeText={setInitialEvent}
+                                        placeholder="Ex.: trabalho"
+                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                        style={styles.input}
+                                    />
+                                </View>
+
+                                <View style={{ marginTop: theme.spacing.xs }}>
+                                    <Text style={styles.inputLabel}>Receber Notificações</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <Text style={{ color: '#1F2937' }}>Permitir alertas</Text>
+                                        <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
+                                    </View>
+                                </View>
+
+                                <View style={{ marginTop: theme.spacing.xs }}>
+                                    <Text style={styles.inputLabel}>Uso de Ferramentas</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <Text style={{ color: '#1F2937' }}>Ativar Game XP</Text>
+                                        <Switch value={gameXPEnabled} onValueChange={setGameXPEnabled} />
+                                    </View>
+                                </View>
+                            </>
+                        )}
+
+                        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
                             <Text style={styles.primaryButtonText}>{authMode === 'login' ? 'Entrar' : 'Cadastrar'}</Text>
                         </TouchableOpacity>
 
