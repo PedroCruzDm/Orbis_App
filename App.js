@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, Text, Alert, ScrollView, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Dimensions } from 'react-native';
 import Header from './src/components/Header/header';
 import Navbar from './src/components/Navbar/navbar';
 import Dashboard from './src/components/Dashboard/Dashboard';
 import Modo_Foco from './src/components/Modo_Foco/Screens/main';
 import Agenda from './src/components/Agenda/Screens/main';
 import ModoSonoMain from './src/components/Modo_Sono/asset/main';
-import { database, firebaseConfig } from './src/hooks/Firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './src/hooks/Firebase/config';
 
 
-Alert.alert('DB Config', JSON.stringify(database, null, 2));
+//Alert.alert('DB Config', JSON.stringify(database, null, 2));
 //console.log('Firebase Config:', firebaseConfig);
 
 function PlaceholderScreen({ title, description }) {
@@ -56,6 +57,16 @@ export default function App() {
     const i = indexFromKey(screen);
     scrollRef.current?.scrollTo({ x: i * width, animated: true });
   }, [screen, width]);
+
+  // After user logs in, start on Focus mode
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setScreen('foco');
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const handleScrollEnd = (e) => {
     const x = e?.nativeEvent?.contentOffset?.x || 0;

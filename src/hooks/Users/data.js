@@ -5,7 +5,7 @@ export const dashboardSleepScoreToday = 72;
 export const dashboardStats = [
 	{ key: 'prod', title: 'Produtividade', value: 12, max: 20, description: 'Hoje', type: 'gauge' },
 	{ key: 'foco', title: 'Tempo de Foco', value: 180, max: 240, description: 'minutos hoje', type: 'gauge' },
-	{ key: 'dias', title: 'Dias Consecutivos', value: 5, max: 7, description: 'Sequência ativa', type: 'days', days: [false, true, true, true, true, true, true] },
+	{ key: 'dias', title: 'Dias Consecutivos', value: 1, max: 7, description: 'Sequência ativa', type: 'days', days: [true, true, false, false, false, false, false] },
 ];
 
 export const dashboardRecent = [

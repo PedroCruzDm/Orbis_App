@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal, TextInput, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal, TextInput, Switch, Alert, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import theme from '../../theme';
-import { auth, db } from '../../hooks/Firebase/config';
-import { createUserWithEmailAndPassword, updateProfile, signInWithEmailAndPassword } from 'firebase/auth';
-import { setDoc, doc } from 'firebase/firestore';
+import { createUser, loginUser } from '../../hooks/Users/User';
 
 const Header = () => {
     const [showUserModal, setShowUserModal] = useState(false);
@@ -19,6 +17,11 @@ const Header = () => {
     const [initialEvent, setInitialEvent] = useState(''); // ex.: trabalho
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [gameXPEnabled, setGameXPEnabled] = useState(false);
+    const [tools, setTools] = useState({
+        modoFoco: true,
+        modoSono: true,
+        agenda: true,
+    });
 
     const openUser = () => setShowUserModal(true);
     const closeUser = () => setShowUserModal(false);
@@ -36,26 +39,30 @@ const Header = () => {
                     Alert.alert('Erro', 'Informe seu nome.');
                     return;
                 }
-                const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-                if (name) {
-                    await updateProfile(cred.user, { displayName: name });
-                }
 
-                const uid = cred.user.uid;
-                await setDoc(doc(db, 'Usuarios', uid), {
-                    nome: name,
-                    apelido: nickname || null,
-                    email: email.trim(),
-                    idade: age ? Number(age) : null,
-                    eventoFixoInicial: initialEvent || null,
-                    receberNotificacoes: notificationsEnabled,
-                    gameXPAtivado: gameXPEnabled,
+                await createUser({
+                  email,
+                  password,
+                  nome: name,
+                  apelido: nickname || null,
+                  idade: age,
+                  eventoFixoInicial: initialEvent,
+                  notificacao: notificationsEnabled,
+                  gameXPAtivado: gameXPEnabled,
+                  // envia nomes padronizados dos módulos
+                  ferramentas: Object.entries(tools)
+                    .filter(([, enabled]) => enabled)
+                    .map(([key]) => {
+                      if (key === 'modoFoco') return 'foco';
+                      if (key === 'modoSono') return 'sono';
+                      return key; // 'agenda'
+                    }),
                 });
 
                 Alert.alert('Sucesso', 'Conta criada com sucesso!');
                 closeUser();
             } else {
-                await signInWithEmailAndPassword(auth, email.trim(), password);
+                await loginUser(email, password);
                 Alert.alert('Sucesso', 'Login realizado!');
                 closeUser();
             }
@@ -82,111 +89,141 @@ const Header = () => {
             >
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeUser}>
                     <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>{authMode === 'login' ? 'Entrar' : 'Criar Conta'}</Text>
+                        <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+                            <Text style={styles.modalTitle}>{authMode === 'login' ? 'Entrar' : 'Criar Conta'}</Text>
 
-                        {authMode === 'signup' && (
-                            <>
-                                <View style={styles.inputWrap}>
-                                    <Text style={styles.inputLabel}>Nome</Text>
-                                    <TextInput
-                                        value={name}
-                                        onChangeText={setName}
-                                        placeholder="Seu nome"
-                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                        style={styles.input}
-                                    />
-                                </View>
-
-                                <View style={styles.inputWrap}>
-                                    <Text style={styles.inputLabel}>Apelido (opcional)</Text>
-                                    <TextInput
-                                        value={nickname}
-                                        onChangeText={setNickname}
-                                        placeholder="Exibição em ranking"
-                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                        style={styles.input}
-                                    />
-                                </View>
-                            </>
-                        )}
-
-                        <View style={styles.inputWrap}>
-                            <Text style={styles.inputLabel}>Email</Text>
-                            <TextInput
-                                value={email}
-                                onChangeText={setEmail}
-                                placeholder="voce@email.com"
-                                placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                style={styles.input}
-                            />
-                        </View>
-
-                        <View style={styles.inputWrap}>
-                            <Text style={styles.inputLabel}>Senha</Text>
-                            <TextInput
-                                value={password}
-                                onChangeText={setPassword}
-                                placeholder="••••••••"
-                                placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                secureTextEntry
-                                style={styles.input}
-                            />
-                        </View>
-
-                        {authMode === 'signup' && (
-                            <>
-                                <View style={styles.inputWrap}>
-                                    <Text style={styles.inputLabel}>Idade (opcional)</Text>
-                                    <TextInput
-                                        value={age}
-                                        onChangeText={setAge}
-                                        placeholder="Ex.: 25"
-                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                        keyboardType="number-pad"
-                                        style={styles.input}
-                                    />
-                                </View>
-
-                                <View style={styles.inputWrap}>
-                                    <Text style={styles.inputLabel}>Evento Fixo Inicial (opcional)</Text>
-                                    <TextInput
-                                        value={initialEvent}
-                                        onChangeText={setInitialEvent}
-                                        placeholder="Ex.: trabalho"
-                                        placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
-                                        style={styles.input}
-                                    />
-                                </View>
-
-                                <View style={{ marginTop: theme.spacing.xs }}>
-                                    <Text style={styles.inputLabel}>Receber Notificações</Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Text style={{ color: '#1F2937' }}>Permitir alertas</Text>
-                                        <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
+                            {authMode === 'signup' && (
+                                <>
+                                    <View style={styles.inputWrap}>
+                                        <Text style={styles.inputLabel}>Nome</Text>
+                                        <TextInput
+                                            value={name}
+                                            onChangeText={setName}
+                                            placeholder="Seu nome"
+                                            placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                            style={styles.input}
+                                        />
                                     </View>
-                                </View>
 
-                                <View style={{ marginTop: theme.spacing.xs }}>
-                                    <Text style={styles.inputLabel}>Uso de Ferramentas</Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <Text style={{ color: '#1F2937' }}>Ativar Game XP</Text>
-                                        <Switch value={gameXPEnabled} onValueChange={setGameXPEnabled} />
+                                    <View style={styles.inputWrap}>
+                                        <Text style={styles.inputLabel}>Apelido (opcional)</Text>
+                                        <TextInput
+                                            value={nickname}
+                                            onChangeText={setNickname}
+                                            placeholder="Exibição em ranking"
+                                            placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                            style={styles.input}
+                                        />
                                     </View>
-                                </View>
-                            </>
-                        )}
+                                </>
+                            )}
 
-                        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
-                            <Text style={styles.primaryButtonText}>{authMode === 'login' ? 'Entrar' : 'Cadastrar'}</Text>
-                        </TouchableOpacity>
+                            <View style={styles.inputWrap}>
+                                <Text style={styles.inputLabel}>Email</Text>
+                                <TextInput
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    placeholder="voce@email.com"
+                                    placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                    style={styles.input}
+                                />
+                            </View>
 
-                        <TouchableOpacity onPress={toggleMode} style={styles.switchWrap}>
-                            <Text style={styles.switchText}>
-                                {authMode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
-                            </Text>
-                        </TouchableOpacity>
+                            <View style={styles.inputWrap}>
+                                <Text style={styles.inputLabel}>Senha</Text>
+                                <TextInput
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    placeholder="••••••••"
+                                    placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                    secureTextEntry
+                                    style={styles.input}
+                                />
+                            </View>
+
+                            {authMode === 'signup' && (
+                                <>
+                                    <View style={styles.inputWrap}>
+                                        <Text style={styles.inputLabel}>Idade (opcional)</Text>
+                                        <TextInput
+                                            value={age}
+                                            onChangeText={setAge}
+                                            placeholder="Ex.: 25"
+                                            placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                            keyboardType="number-pad"
+                                            style={styles.input}
+                                        />
+                                    </View>
+
+                                    <View style={styles.inputWrap}>
+                                        <Text style={styles.inputLabel}>Evento Fixo Inicial (opcional)</Text>
+                                        <TextInput
+                                            value={initialEvent}
+                                            onChangeText={setInitialEvent}
+                                            placeholder="Ex.: trabalho"
+                                            placeholderTextColor={theme.colors.text.muted || '#94A3B8'}
+                                            style={styles.input}
+                                        />
+                                    </View>
+
+                                    <View style={{ marginTop: theme.spacing.xs }}>
+                                        <Text style={styles.inputLabel}>Receber Notificações</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <Text style={{ color: '#1F2937' }}>Permitir alertas</Text>
+                                            <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
+                                        </View>
+                                    </View>
+
+                                    <View style={{ marginTop: theme.spacing.xs }}>
+                                        <Text style={styles.inputLabel}>Uso de Ferramentas</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <Text style={{ color: '#1F2937' }}>Ativar Game XP</Text>
+                                            <Switch value={gameXPEnabled} onValueChange={setGameXPEnabled} />
+                                        </View>
+                                    </View>
+
+                                    <View style={{ marginTop: theme.spacing.xs }}>
+                                        <Text style={styles.inputLabel}>Selecionar ferramentas</Text>
+                                        <View style={styles.toolsGrid}>
+                                            {[
+                                                { key: 'modoFoco', label: 'Modo Foco' },
+                                                { key: 'modoSono', label: 'Modo Sono' },
+                                                { key: 'agenda', label: 'Agenda' },
+                                            ].map(({ key, label }) => (
+                                                <TouchableOpacity
+                                                    key={key}
+                                                    style={[styles.toolChip, tools[key] && styles.toolChipActive]}
+                                                    onPress={() => setTools((prev) => ({ ...prev, [key]: !prev[key] }))}
+                                                    accessibilityRole="checkbox"
+                                                    accessibilityState={{ checked: tools[key] }}
+                                                >
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                        <MaterialCommunityIcons
+                                                            name={tools[key] ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                                                            size={20}
+                                                            color={tools[key] ? theme.colors.primary[600] : '#6B7280'}
+                                                        />
+                                                        <Text style={{ color: '#1F2937' }}>{label}</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    </View>
+                                </>
+                            )}
+
+                            <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
+                                <Text style={styles.primaryButtonText}>{authMode === 'login' ? 'Entrar' : 'Cadastrar'}</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity onPress={toggleMode} style={styles.switchWrap}>
+                                <Text style={styles.switchText}>
+                                    {authMode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
+                                </Text>
+                            </TouchableOpacity>
+                        </ScrollView>
                     </TouchableOpacity>
                 </TouchableOpacity>
             </Modal>
@@ -234,10 +271,14 @@ const styles = StyleSheet.create({
     modalCard: {
         width: '100%',
         maxWidth: 420,
+        maxHeight: '90%',
         backgroundColor: '#FFFFFF',
         borderRadius: theme.borderRadius.xl,
         padding: theme.spacing.lg,
         ...theme.shadows.xl,
+    },
+    modalContent: {
+        paddingBottom: theme.spacing.md,
     },
     modalTitle: {
         fontSize: theme.typography.fontSize.lg,
@@ -284,6 +325,24 @@ const styles = StyleSheet.create({
         color: theme.colors.primary[200],
         fontSize: theme.typography.fontSize.xs,
         textDecorationLine: 'underline',
+    },
+    toolsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: theme.spacing.xs,
+        marginTop: theme.spacing.xs,
+    },
+    toolChip: {
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        borderRadius: theme.borderRadius.md,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: '#F9FAFB',
+    },
+    toolChipActive: {
+        borderColor: theme.colors.primary[500],
+        backgroundColor: theme.colors.primary[50],
     },
 });
 

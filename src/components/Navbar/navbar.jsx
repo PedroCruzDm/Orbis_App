@@ -56,18 +56,14 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'stretch',
     height: 64,
-    paddingHorizontal: theme.spacing.md,
     backgroundColor: theme.colors.primary[600],
-    ...theme.shadows.lg,
   },
   item: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.xs,
   },
   icon: {
     fontSize: 20,
@@ -78,18 +74,14 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.borderRadius.lg,
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
   iconWrapActive: {
     backgroundColor: theme.colors.primary[500],
-    width: 64,
-    height: 74,
-    ...theme.shadows.xl,
   },
   activeLabel: {
     color: theme.colors.text.inverse,

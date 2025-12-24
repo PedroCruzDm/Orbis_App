@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, FlatList, Dimensions } from "react-native";
-import { evaluateFocus, formatHMS } from "../rules/evaluator";
+import { evaluateFocus, formatHMS } from "../evaluator";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../../../hooks/Firebase/config";
+import { getUser } from "../../../hooks/Users/User";
+import { doc, updateDoc, arrayUnion, arrayRemove, increment } from "firebase/firestore";
+import { db } from "../../../hooks/Firebase/config";
 
 const isTablet = Dimensions.get("window").width >= 768;
 
@@ -14,6 +19,9 @@ export default function Modo_Foco() {
   const [taskInput, setTaskInput] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [history, setHistory] = useState(focoInitialHistory);
+  const [pointsToday, setPointsToday] = useState(0);
+  const [xpToday, setXpToday] = useState(0);
+  const [userUid, setUserUid] = useState(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -34,28 +42,171 @@ export default function Modo_Foco() {
     };
   }, [running]);
 
+  // Util helpers para retenção
+  const toDateMs = (ts) => {
+    if (!ts) return 0;
+    try {
+      if (typeof ts.toDate === 'function') return ts.toDate().getTime();
+      if (ts instanceof Date) return ts.getTime();
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? 0 : d.getTime();
+    } catch {
+      return 0;
+    }
+  };
+
+  const pruneTemporaryLists = async (uid) => {
+    try {
+      const data = await getUser(uid);
+      const foco = data?.ferramentas?.foco || {};
+      const tarefas = foco?.tarefas || {};
+
+      const historico = Array.isArray(tarefas.listaHistorico) ? tarefas.listaHistorico : [];
+      const falhada = Array.isArray(tarefas.listaFalhada) ? tarefas.listaFalhada : [];
+
+      const now = Date.now();
+      const cutoffWeek = now - 7 * 24 * 60 * 60 * 1000;
+      const cutoffMonth = now - 30 * 24 * 60 * 60 * 1000;
+
+      const historicoFiltered = historico.filter((it) => toDateMs(it.timestamp) >= cutoffMonth);
+      const falhadaFiltered = falhada.filter((it) => toDateMs(it.timestamp) >= cutoffWeek);
+
+      const needUpdate = historicoFiltered.length !== historico.length || falhadaFiltered.length !== falhada.length;
+      if (needUpdate) {
+        await updateDoc(doc(db, 'Usuarios', uid), {
+          'ferramentas.foco.tarefas.listaHistorico': historicoFiltered,
+          'ferramentas.foco.tarefas.listaFalhada': falhadaFiltered,
+          updatedAt: new Date(),
+        });
+      }
+      return { historico: historicoFiltered, falhada: falhadaFiltered };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Ao logar, carrega dados de foco do usuário (com defaults 0 se vazio)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setUserUid(null);
+        return;
+      }
+      setUserUid(user.uid);
+      try {
+        const data = await getUser(user.uid);
+        const foco = data?.ferramentas?.foco || {};
+        const tarefas = foco?.tarefas || {};
+        const pontos = foco?.pontos || {};
+        const nivel = foco?.nivel || {};
+
+        setTasks(Array.isArray(tarefas.lista) ? tarefas.lista : []);
+        // Prune listas temporárias conforme política
+        const pruned = await pruneTemporaryLists(user.uid);
+        if (pruned && Array.isArray(pruned.historico)) {
+          setHistory(pruned.historico);
+        } else {
+          setHistory(Array.isArray(tarefas.listaHistorico) ? tarefas.listaHistorico : []);
+        }
+        setPointsToday(typeof pontos.pontosHoje === "number" ? pontos.pontosHoje : 0);
+        setXpToday(typeof nivel.xpHoje === "number" ? nivel.xpHoje : 0);
+      } catch (e) {
+        // Mantém defaults locais se houver erro
+      }
+    });
+    return () => unsub();
+  }, []);
+
   const onToggle = () => {
     setRunning((v) => !v);
   };
 
-  const onStopAndValidate = () => {
+  const onStopAndValidate = async () => {
     setRunning(false);
     const r = evaluateFocus(elapsed);
     setResult(r);
+    setElapsed(0); // Reseta o timer após concluir
     
     // Adiciona ao histórico se houver resultado
     if (r) {
-      setHistory((prev) => [
-        {
-          id: Date.now(),
-          title: tasks.length > 0 ? tasks[0]?.title : "Foco Sem Tarefa",
-          timeSpent: formatHMS(elapsed),
-          status: r.status,
-          xp: r.xp,
-          date: new Date().toLocaleTimeString(),
-        },
-        ...prev,
-      ]);
+      const currentTask = tasks && tasks.length > 0 ? tasks[0] : null;
+      const sessionRecord = {
+        id: Date.now(),
+        title: currentTask ? currentTask.title : "Foco Sem Tarefa",
+        // Campos solicitados explicitamente
+        titulo: currentTask ? currentTask.title : "Foco Sem Tarefa",
+        tempoFoco: formatHMS(elapsed),
+        dia: new Date().toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }),
+        xpGerado: r.xp,
+        // Campos já existentes para compatibilidade
+        timeSpent: formatHMS(elapsed),
+        status: r.status,
+        xp: r.xp,
+        taskId: currentTask ? currentTask.id : null,
+        date: new Date().toLocaleString('pt-BR', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric',
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        timestamp: new Date(),
+      };
+
+      setHistory((prev) => [sessionRecord, ...prev]);
+
+      // Salva no Firebase se usuário estiver autenticado
+      if (userUid) {
+        try {
+          const userRef = doc(db, "Usuarios", userUid);
+          const updates = {
+            "ferramentas.foco.tarefas.listaHistorico": arrayUnion(sessionRecord),
+            "ferramentas.foco.nivel.xpHoje": increment(r.xp),
+            "ferramentas.foco.nivel.xpTotal": increment(r.xp),
+            updatedAt: new Date(),
+          };
+
+          // Se falhou, adiciona também à listaFalhada
+          if (r.status === 'Falha') {
+            updates["ferramentas.foco.tarefas.listaFalhada"] = arrayUnion(sessionRecord);
+          }
+
+          // Se parcial (10-20min), adiciona à listaPendente
+          if (r.status === 'Parcial') {
+            updates["ferramentas.foco.tarefas.listaPendente"] = arrayUnion(sessionRecord);
+          }
+
+          // Se sucesso (>=20min), adiciona à listaConcluida e remove da lista principal
+          if (r.status === 'Sucesso') {
+            updates["ferramentas.foco.tarefas.listaConcluida"] = arrayUnion(sessionRecord);
+            if (currentTask) {
+              updates["ferramentas.foco.tarefas.lista"] = arrayRemove(currentTask);
+            }
+          }
+
+          await updateDoc(userRef, updates);
+
+          // Atualiza estado local
+          setXpToday((prev) => prev + r.xp);
+
+          // Se sucesso, remove a tarefa concluída da lista local
+          if (r.status === 'Sucesso' && currentTask) {
+            setTasks((prev) => prev.filter((t) => t.id !== currentTask.id));
+          }
+
+          // Após salvar, aplica política de retenção (falhada: 1 semana, histórico: 1 mês)
+          const pruned = await pruneTemporaryLists(userUid);
+          if (pruned && Array.isArray(pruned.historico)) {
+            setHistory(pruned.historico);
+          }
+        } catch (error) {
+          console.error("Erro ao salvar foco no Firebase:", error);
+        }
+      }
     }
   };
 
@@ -65,12 +216,25 @@ export default function Modo_Foco() {
     setResult(null);
   };
 
-  const onAddTask = () => {
+  const onAddTask = async () => {
     if (taskInput.trim()) {
+      const newTask = { id: Date.now(), title: taskInput, durationEstimate: "" };
       setTasks((prev) => [
         ...prev,
-        { id: Date.now(), title: taskInput, durationEstimate: "" },
+        newTask,
       ]);
+      // Persiste na lista de tarefas do usuário
+      if (userUid) {
+        try {
+          const userRef = doc(db, "Usuarios", userUid);
+          await updateDoc(userRef, {
+            "ferramentas.foco.tarefas.lista": arrayUnion(newTask),
+            updatedAt: new Date(),
+          });
+        } catch (e) {
+          // silencioso: mantém local mesmo se falhar
+        }
+      }
       setTaskInput("");
       setShowCreateModal(false);
     }
@@ -112,6 +276,8 @@ export default function Modo_Foco() {
   const TimerPanel = () => (
     <View style={styles.timerPanelContainer}>
       <Text style={styles.timerTitle}>Cronômetro de Foco</Text>
+
+      <Text style={styles.metricsText}>Pontos Hoje: {pointsToday} • XP Hoje: {xpToday}</Text>
 
       <View style={styles.timerWrap}>
         <Text style={styles.timerText}>{formatHMS(elapsed)}</Text>
@@ -155,6 +321,7 @@ export default function Modo_Foco() {
               <View style={styles.historyContent}>
                 <Text style={styles.historyTitle}>{item.title}</Text>
                 <Text style={styles.historyTime}>{item.timeSpent}</Text>
+                <Text style={styles.historyDate}>{item.date}</Text>
               </View>
               <View style={styles.historyStatus}>
                 <Text
@@ -354,6 +521,11 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 16,
   },
+  metricsText: {
+    fontSize: 13,
+    color: "#374151",
+    marginBottom: 8,
+  },
   timerWrap: {
     marginVertical: 24,
     alignItems: "center",
@@ -440,6 +612,11 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontSize: 12,
     marginTop: 4,
+  },
+  historyDate: {
+    color: "#9CA3AF",
+    fontSize: 11,
+    marginTop: 2,
   },
   historyStatus: {
     alignItems: "flex-end",
