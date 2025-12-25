@@ -1,16 +1,31 @@
 import React, { useRef } from 'react';
-import {
-    View,
-    Text,
-    TouchableOpacity,
-    StyleSheet,
-    Appearance,
-    ScrollView,
-    findNodeHandle,
-    UIManager,
-    useWindowDimensions,
-} from 'react-native';
-import theme from '../theme';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, findNodeHandle, UIManager, useWindowDimensions } from 'react-native';
+import theme from '../../theme';
+import './styles/home_apresentacao.css';
+
+/* Design tokens (ajuste conforme seu tema) */
+const TOKENS = {
+    spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
+    font: { xs: 12, sm: 14, base: 16, lg: 18, xl: 24, '3xl': 30 },
+    weight: { bold: '700', extrabold: '800' },
+    lineHeight: { relaxed: 1.625 },
+    primary: { '50': '#eff6ff', '200': '#bfdbfe', '400': '#60a5fa', '500': '#3b82f6', '600': '#2563eb', '800': '#1e40af' },
+    semantic: {
+        primary: '#3b82f6',
+        muted: '#6b7280',
+        bg: '#ffffff',
+        card: '#f9fafb',
+        textPrimary: '#111827',
+        textInverse: '#ffffff',
+        borderDefault: '#e5e7eb',
+        bgPrimary: '#f3f4f6'
+    },
+    radius: { md: 8, lg: 12, xl: 16, full: 9999 },
+    shadow: {
+        sm: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 },
+        md: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4 }
+    }
+};
 
 export default function Home_Apresentacao({ onCreateAccount, onLogin }) {
     // Forçar tema claro conforme solicitado
@@ -158,7 +173,7 @@ export default function Home_Apresentacao({ onCreateAccount, onLogin }) {
 }
 
 function createStyles(dark, width) {
-    const bg = dark ? theme.colors.background.secondary : theme.colors.background.primary;
+    const bg = dark ? theme.colors.background.dark : theme.colors.background.light;
     const muted = theme.colors.text.secondary;
     const primary = theme.colors.primary[500];
 
@@ -221,18 +236,18 @@ function createStyles(dark, width) {
         },
         heroVisual: { width: isSmall ? '100%' : 220, alignItems: 'center', justifyContent: 'center' },
         floatingRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginVertical: theme.spacing.xs },
-        floatingItem: { alignItems: 'center', width: isSmall ? '48%' : '48%' },
+        floatingItem: { flexDirection: 'row', alignItems: 'center', width: '48%' },
         floatIcon: { fontSize: 22 },
         floatText: { color: muted, fontSize: theme.typography.fontSize.xs, marginTop: theme.spacing.xs },
         orbisVisual: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center', position: 'relative', marginVertical: theme.spacing.sm },
-        orbitRing: { width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: theme.colors.border.default, position: 'absolute' },
+        orbitRing: { width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: theme.colors.border.light, position: 'absolute' },
         centerPlanet: { fontSize: 36 },
         satellite: { position: 'absolute', right: 8, top: 8 },
         featuresSection: { marginTop: theme.spacing.md },
         featureCard: { 
             flexDirection: isSmall ? 'column' : 'row', 
             marginBottom: theme.spacing.lg, 
-            backgroundColor: theme.colors.card, 
+            backgroundColor: theme.colors.card.light, 
             borderRadius: theme.borderRadius.xl, 
             padding: theme.spacing.lg,
             ...theme.shadows.sm,
@@ -253,14 +268,14 @@ function createStyles(dark, width) {
             padding: theme.spacing.sm, 
             marginTop: isSmall ? theme.spacing.sm : 0 
         },
-        calendarPreview: { backgroundColor: theme.colors.background.primary, padding: theme.spacing.sm, borderRadius: theme.borderRadius.md, width: '100%' },
+        calendarPreview: { backgroundColor: theme.colors.background.subtle, padding: theme.spacing.sm, borderRadius: theme.borderRadius.md, width: '100%' },
         calendarHeader: { fontWeight: theme.typography.fontWeight.bold, marginBottom: theme.spacing.sm },
         calendarEvents: {},
         event: { paddingVertical: theme.spacing.xs },
         eventWork: {},
         eventFocus: {},
         eventFlex: {},
-        sleepPreview: { alignItems: 'center' },
+        sleepPreview: { flexDirection: 'row', alignItems: 'center' },
         sleepCircle: { 
             width: 80, 
             height: 80, 
@@ -280,14 +295,14 @@ function createStyles(dark, width) {
             fontSize: theme.typography.fontSize.xs 
         },
         sleepCycles: { flexDirection: 'row' },
-        focusTimer: { alignItems: 'center' },
+        focusTimer: { flexDirection: 'row', alignItems: 'center' },
         timerText: { fontSize: theme.typography.fontSize.xl, fontWeight: theme.typography.fontWeight.bold },
         dashboardPreview: { alignItems: 'center' },
         dashboardHeader: { fontWeight: theme.typography.fontWeight.bold },
         philosophySection: { 
             marginTop: theme.spacing.xl, 
             padding: theme.spacing.lg, 
-            backgroundColor: theme.colors.card, 
+            backgroundColor: theme.colors.card.light, 
             borderRadius: theme.borderRadius.xl,
             ...theme.shadows.md,
         },

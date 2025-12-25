@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, FlatList, Dimensions } from "react-native";
-import { evaluateFocus, formatHMS } from "../evaluator";
+import { evaluateFocus, formatHMS } from "../../services/evaluator";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../../../hooks/Firebase/config";
-import { getUser } from "../../../hooks/Users/User";
+import { auth, db } from "../../services/firebase/firebase_config";
+import { getUser } from "../../data/user";
 import { doc, updateDoc, arrayUnion, arrayRemove, increment } from "firebase/firestore";
-import { db } from "../../../hooks/Firebase/config";
 
 const isTablet = Dimensions.get("window").width >= 768;
 
-import { focoInitialTasks, focoInitialHistory } from '../../../hooks/Users/data';
+import { focoInitialTasks, focoInitialHistory } from '../../data/data';
 
 export default function Modo_Foco() {
   const [running, setRunning] = useState(false);

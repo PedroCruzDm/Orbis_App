@@ -1,20 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity, Modal, TextInput, Switch, Alert, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, Modal, TextInput, Switch, Alert, ScrollView, StyleSheet, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import theme from '../../theme';
-import { createUser, loginUser } from '../../hooks/Users/User';
+import { createUser, loginUser } from '../../data/user';
 
 const Header = () => {
     const [showUserModal, setShowUserModal] = useState(false);
-    const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
+    const [authMode, setAuthMode] = useState('login');
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-
-    // new signup fields
     const [nickname, setNickname] = useState('');
     const [age, setAge] = useState('');
-    const [initialEvent, setInitialEvent] = useState(''); // ex.: trabalho
+    const [initialEvent, setInitialEvent] = useState('');
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [gameXPEnabled, setGameXPEnabled] = useState(false);
     const [tools, setTools] = useState({
@@ -49,13 +47,12 @@ const Header = () => {
                   eventoFixoInicial: initialEvent,
                   notificacao: notificationsEnabled,
                   gameXPAtivado: gameXPEnabled,
-                  // envia nomes padronizados dos módulos
                   ferramentas: Object.entries(tools)
                     .filter(([, enabled]) => enabled)
                     .map(([key]) => {
                       if (key === 'modoFoco') return 'foco';
                       if (key === 'modoSono') return 'sono';
-                      return key; // 'agenda'
+                      return key;
                     }),
                 });
 
@@ -74,7 +71,7 @@ const Header = () => {
 
     return (
         <View style={styles.header}>
-            <View style={styles.nav} accessible accessibilityRole="header">
+            <View style={styles.nav}>
                 <Text style={styles.brand}>Orbis</Text>
                 <TouchableOpacity onPress={openUser} style={styles.userButton}>
                     <MaterialCommunityIcons name="account-circle" size={32} color={theme.colors.text.inverse} />
@@ -253,9 +250,6 @@ const styles = StyleSheet.create({
         color: theme.colors.text.inverse,
         letterSpacing: 0.2,
     },
-    right: {
-        minWidth: 48,
-    },
     userButton: {
         padding: theme.spacing.xs,
         alignItems: 'center',
@@ -322,7 +316,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     switchText: {
-        color: theme.colors.primary[200],
+        color: theme.colors.primary[600],
         fontSize: theme.typography.fontSize.xs,
         textDecorationLine: 'underline',
     },

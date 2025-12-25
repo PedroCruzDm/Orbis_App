@@ -1,6 +1,6 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { auth, db } from '../Firebase/config';
+import { auth, db } from '../services/firebase/firebase_config';
 
 const usersCollection = collection(db, 'Usuarios');
 
@@ -163,6 +163,24 @@ export const createUser = async (userData) => {
 export const loginUser = (email, password) => {
     const trimmedEmail = (email || '').trim();
     return signInWithEmailAndPassword(auth, trimmedEmail, password);
+};
+
+export const getCurrentUser = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Usuário não autenticado');
+  }
+  
+  // Busca dados completos do Firestore
+  const userData = await getUser(currentUser.uid);
+  
+  return {
+    uid: currentUser.uid,
+    email: currentUser.email,
+    nome: currentUser.displayName || userData?.nome,
+    apelido: userData?.apelido,
+    ...userData,
+  };
 };
 
 export const updateUser = async (uid, userData) => {

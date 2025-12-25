@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
-import CircularGauge from './CircularGauge/CircularGauge';
-import DaysStreak from './DaysStreak/Status_Dia_Consecutivos';
+import CircularGauge from './circular_gauge.jsx';
+import DaysStreak from './status_dia_consecutivos.jsx';
 import theme from '../../theme';
 
 export default function StatsCard({ title, value = 0, max = 100, description, type = 'gauge', days = [] }) {

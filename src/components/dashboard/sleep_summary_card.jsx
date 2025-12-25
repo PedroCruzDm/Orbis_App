@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
-import CircularGauge from './CircularGauge/CircularGauge';
+import CircularGauge from './circular_gauge';
 import theme from '../../theme';
 
 export default function SleepSummaryCard({ score = 0, avg = null }) {

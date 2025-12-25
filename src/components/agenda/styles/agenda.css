@@ -1,0 +1,537 @@
+
+  /* Container */
+.container {
+  flex: 1;
+  background-color: #FDFBF8;
+}
+
+/* Header */
+.header {
+  background-color: #fff;
+  padding: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.headerTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.headerStats {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 8px 0;
+  background-color: #F9FAFB;
+  border-radius: 8px;
+}
+
+.statNumber {
+  font-size: 18px;
+  font-weight: 700;
+  color: #A7727D;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #6B7280;
+  margin-top: 4px;
+}
+
+/* Tab Bar */
+.tabBar {
+  display: flex;
+  flex-direction: row;
+  background-color: #fff;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.tabButton {
+  flex: 1;
+  padding: 12px 0;
+  text-align: center;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.tabButtonActive {
+  border-bottom-color: #A7727D;
+}
+
+.tabButtonText {
+  font-size: 14px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.tabButtonTextActive {
+  color: #A7727D;
+}
+
+/* Content */
+.content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Timeline */
+.timelineContainer {
+  flex: 1;
+  padding: 12px;
+}
+
+.timelineItem {
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.timelineTime {
+  font-weight: 700;
+  color: #111827;
+  font-size: 13px;
+  min-width: 50px;
+  padding-top: 8px;
+}
+
+.timelineContent {
+  flex: 1;
+}
+
+/* Event Card */
+.eventCard {
+  background-color: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  border-left: 4px solid #A7727D;
+  margin-bottom: 10px;
+}
+
+.eventCardSmall {
+  padding: 10px;
+}
+
+.eventHeader {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.eventDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background-color: #A7727D;
+}
+
+.eventTitle {
+  font-weight: 700;
+  color: #111827;
+  font-size: 14px;
+  flex: 1;
+}
+
+.eventDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eventLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9CA3AF;
+  text-transform: uppercase;
+}
+
+.eventTime {
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.eventPriority {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.priorityHigh {
+  background-color: #FEE2E2;
+  color: #DC2626;
+}
+
+.priorityMedium {
+  background-color: #FEF3C7;
+  color: #D97706;
+}
+
+.priorityLow {
+  background-color: #DBEAFE;
+  color: #2563EB;
+}
+
+.eventStatus {
+  margin-top: 6px;
+}
+
+.statusBadge {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.deleteBtn {
+  color: #EF4444;
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+/* Calendar */
+.calendarContainer {
+  background-color: #fff;
+  margin: 12px;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.calendarHeader {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.calendarArrow {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.calendarArrowText {
+  font-size: 28px;
+  color: #A7727D;
+  font-weight: bold;
+}
+
+.calendarMonthYear {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.calendarWeekDays {
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 8px;
+}
+
+.calendarWeekDay {
+  flex: 1;
+  text-align: center;
+}
+
+.calendarWeekDayText {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendarDay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  aspect-ratio: 1;
+  position: relative;
+  cursor: pointer;
+}
+
+.calendarDayToday {
+  background-color: #FEF3C7;
+  border-radius: 8px;
+}
+
+.calendarDaySelected {
+  background-color: #A7727D;
+  border-radius: 8px;
+}
+
+.calendarDayText {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}
+
+.calendarDayTextToday {
+  color: #D97706;
+  font-weight: 700;
+}
+
+.calendarDayTextSelected {
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+.eventIndicator {
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: #E88D67;
+}
+
+.selectedDateEvents {
+  margin-top: 20px;
+  border-top: 1px solid #E5E7EB;
+  padding-top: 16px;
+}
+
+.selectedDateTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.eventsScrollView {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Tab Content */
+.tabContent {
+  padding: 12px;
+}
+
+.tabHeader {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.tabTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.tabCount {
+  font-size: 12px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background-color: #A7727D;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: #9CA3AF;
+}
+
+/* FAB */
+.fab {
+  position: fixed;
+  bottom: 20px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+}
+
+.fabButton {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  border: none;
+}
+
+.fabFixed {
+  background-color: #A7727D;
+}
+
+.fabFlexible {
+  background-color: #E88D67;
+}
+
+.fabFocus {
+  background-color: #0EA5A4;
+}
+
+.fabIcon {
+  font-size: 24px;
+  color: white;
+}
+
+/* Modal */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 999;
+}
+
+.modalContent {
+  background-color: #fff;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding-top: 16px;
+  max-height: 90vh;
+  width: 100%;
+  overflow-y: auto;
+}
+
+.modalHeader {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px 16px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.closeBtn {
+  font-size: 24px;
+  color: #6B7280;
+  font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.modalBody {
+  padding: 16px;
+}
+
+/* Form */
+.fieldLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.input {
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #111827;
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.selectGroup {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.selectButton {
+  flex-grow: 1;
+  min-width: 30%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #D1D5DB;
+  background-color: #F9FAFB;
+  text-align: center;
+  cursor: pointer;
+}
+
+.selectButtonActive {
+  background-color: #A7727D;
+  border-color: #A7727D;
+}
+
+.selectButtonText {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6B7280;
+}
+
+.selectButtonTextActive {
+  color: #FFFFFF;
+}
+
+.reminderNote {
+  background-color: #EFF6FF;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.reminderNoteText {
+  font-size: 12px;
+  color: #0369A1;
+}
+
+.submitBtn {
+  background-color: #A7727D;
+  border-radius: 10px;
+  padding: 14px;
+  margin: 16px;
+  text-align: center;
+  border: none;
+  cursor: pointer;
+}
+
+.submitBtnText {
+  color: #FFFFFF;
+  font-weight: 700;
+  font-size: 14px;
+}

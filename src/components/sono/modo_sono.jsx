@@ -3,9 +3,9 @@ import { SafeAreaView, ScrollView, View, Text, StyleSheet, TouchableOpacity, Dim
 import { Audio } from 'expo-av';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LineChart, BarChart } from 'react-native-chart-kit';
-import { colors } from '../../../theme/colors';
-import { spacing } from '../../../theme/spacing';
-import { typography } from '../../../theme/typography';
+import { colors } from '../../theme/colors';
+import { spacing } from '../../theme/spacing';
+import { typography } from '../../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
 
 const screenWidth = Dimensions.get('window').width;
@@ -16,7 +16,7 @@ function formatTime(date) {
 	return `${h}:${m}`;
 }
 
-import { sleepWeeklyData } from '../../../hooks/Users/data';
+import { sleepWeeklyData } from '../../data/data.js';
 
 export default function ModoSonoMain() {
 	const [wakeTime, setWakeTime] = useState(() => {

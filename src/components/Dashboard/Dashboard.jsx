@@ -1,30 +1,107 @@
-import { useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
-import StatsCard from './StatsCard';
-import { dashboardStats as stats, dashboardRecent as recent, dashboardSleepScoreToday as sleepScoreToday, dashboardWeekly as weekly, dashboardWeeklyDays as weeklyDays, dashboardWeeklyTargetFocusMinutes as weeklyTargetFocusMinutes } from '../../hooks/Users/data';
-import SleepSummaryCard from './SleepSummaryCard';
-import WeeklyPerformanceChart from './WeeklyPerformanceChart';
-import theme from '../../theme';
+import { useState, useEffect } from 'react';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, ActivityIndicator } from 'react-native';
+import StatsCard from './stats_card.jsx';
+import { dashboardStats as stats, dashboardRecent as recent, dashboardSleepScoreToday as sleepScoreToday, dashboardWeekly as weekly, dashboardWeeklyDays as weeklyDays, dashboardWeeklyTargetFocusMinutes as weeklyTargetFocusMinutes } from '../../data/data.js';
+import { getCurrentUser } from '../../data/user';
+import SleepSummaryCard from './sleep_summary_card.jsx';
+import WeeklyPerformanceChart from './weekly_performance_chart.jsx';
+import theme from '../../theme/index.js';
 
 export default function Dashboard() {
   const { width } = useWindowDimensions();
   const columns = width >= 900 ? 3 : width >= 520 ? 2 : 1;
   const itemWidth = columns === 1 ? '100%' : columns === 2 ? '48%' : '32%';
-  // sample data
+  
   const [period, setPeriod] = useState('Dia');
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    try {
+      const userData = await getCurrentUser();
+      setUser(userData);
+    } catch (error) {
+      console.error('Erro ao carregar dados do usuário:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calcula a produtividade com base nos dados reais
+  const calculateProductivity = () => {
+    if (!stats || stats.length === 0) return 0;
+    
+    const focusCard = stats.find(s => s.key === 'focus');
+    const exerciseCard = stats.find(s => s.key === 'exercise');
+    const waterCard = stats.find(s => s.key === 'water');
+    
+    let totalScore = 0;
+    let count = 0;
+
+    if (focusCard && focusCard.max > 0) {
+      totalScore += (focusCard.value / focusCard.max) * 100;
+      count++;
+    }
+    
+    if (exerciseCard && exerciseCard.max > 0) {
+      totalScore += (exerciseCard.value / exerciseCard.max) * 100;
+      count++;
+    }
+    
+    if (waterCard && waterCard.max > 0) {
+      totalScore += (waterCard.value / waterCard.max) * 100;
+      count++;
+    }
+
+    if (sleepScoreToday > 0) {
+      totalScore += sleepScoreToday;
+      count++;
+    }
+
+    return count > 0 ? Math.round(totalScore / count) : 0;
+  };
+
+  const productivity = calculateProductivity();
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  const getUserName = () => {
+    if (!user) return 'usuário';
+    return user.apelido || user.nome || 'usuário';
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.page, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary[700]} />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={{ padding: 16 }}>
       <View style={[styles.hero, { flexDirection: width < 520 ? 'column' : 'row', alignItems: width < 520 ? 'flex-start' : 'center' }]}>
         <View>
-          <Text style={styles.heroTitle}>Boa tarde (usuario)! 👋</Text>
-          <Text style={styles.heroSub}>Você está tendo um ótimo dia produtivo. Continue assim!</Text>
+          <Text style={styles.heroTitle}>{getGreeting()}, {getUserName()}! 👋</Text>
+          <Text style={styles.heroSub}>
+            {user ? 'Você está tendo um ótimo dia produtivo. Continue assim!' : 'Faça login para ver suas estatísticas'}
+          </Text>
         </View>
-        <View style={[styles.heroRight, width < 520 && { marginTop: 12 }]}> 
-          <Text style={styles.heroPercent}>92%</Text>
-          <Text style={styles.heroLabel}>Produtividade</Text>
-        </View>
+        {user && (
+          <View style={[styles.heroRight, width < 520 && { marginTop: 12 }]}> 
+            <Text style={styles.heroPercent}>92%</Text>
+            <Text style={styles.heroLabel}>Produtividade</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.segmentedRow}>
@@ -47,6 +124,18 @@ export default function Dashboard() {
 
       {period === 'Dia' ? (
         <>
+          {/* Card de Produtividade em Destaque */}
+          <View style={[styles.gridItem, { width: '100%' }]}> 
+            <StatsCard 
+              title="Produtividade Geral" 
+              value={productivity} 
+              max={100} 
+              description="Baseado em foco, exercício, hidratação e sono"
+              type="gauge"
+              isPrimary={true}
+            />
+          </View>
+
           <View style={[styles.gridItem, { width: '100%' }]}> 
             <SleepSummaryCard score={sleepScoreToday} avg={weekly.avgSleepScore} />
           </View>
@@ -88,12 +177,14 @@ const styles = StyleSheet.create({
   page: { backgroundColor: theme.colors.background.primary },
   hero: { 
     backgroundColor: theme.colors.primary[700], 
-    padding: theme.spacing.lg, 
+    paddingVertical: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.xl,
     borderRadius: theme.borderRadius.xl, 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
     marginBottom: theme.spacing.lg,
+    marginTop: -16,
   },
   heroTitle: { 
     color: theme.colors.text.inverse, 
@@ -106,16 +197,35 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.xs,
     fontSize: theme.typography.fontSize.sm,
   },
-  heroRight: { alignItems: 'center' },
-  heroPercent: { 
-    color: theme.colors.text.inverse, 
-    fontSize: theme.typography.fontSize['3xl'], 
-    fontWeight: theme.typography.fontWeight.extrabold 
-  },
+  heroRight: { alignItems: 'flex-start', minWidth: 150 },
   heroLabel: { 
     color: theme.colors.text.inverse, 
     opacity: theme.opacity[90],
     fontSize: theme.typography.fontSize.xs,
+    marginBottom: theme.spacing.xs,
+  },
+  barContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  barBackground: {
+    flex: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: theme.borderRadius.lg,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    backgroundColor: theme.colors.text.inverse,
+    borderRadius: theme.borderRadius.lg,
+  },
+  barPercent: {
+    color: theme.colors.text.inverse,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.bold,
+    minWidth: 45,
   },
   segmentedRow: {
     flexDirection: 'row',

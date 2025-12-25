@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, Dimensions } from 'react-native';
-import Header from './src/components/Header/header';
-import Navbar from './src/components/Navbar/navbar';
-import Dashboard from './src/components/Dashboard/Dashboard';
-import Modo_Foco from './src/components/Modo_Foco/Screens/main';
-import Agenda from './src/components/Agenda/Screens/main';
-import ModoSonoMain from './src/components/Modo_Sono/asset/main';
+import Header from './src/components/common/header.jsx';
+import Navbar from './src/components/common/navbar.jsx';
+import Dashboard from './src/components/dashboard/Dashboard.jsx';
+import Modo_Foco from './src/components/foco/modo_foco.jsx';
+import Agenda from './src/components/agenda/agenda.jsx';
+import ModoSonoMain from './src/components/sono/modo_sono.jsx';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './src/hooks/Firebase/config';
+import { auth } from './src/services/firebase/firebase_config';
 
 
 //Alert.alert('DB Config', JSON.stringify(database, null, 2));
