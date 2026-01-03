@@ -1,65 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, ActivityIndicator } from 'react-native';
 import StatsCard from './stats_card.jsx';
-import { dashboardStats as stats, dashboardRecent as recent, dashboardSleepScoreToday as sleepScoreToday, dashboardWeekly as weekly, dashboardWeeklyDays as weeklyDays, dashboardWeeklyTargetFocusMinutes as weeklyTargetFocusMinutes } from '../../data/data.js';
-import { getCurrentUser } from '../../data/user';
 import SleepSummaryCard from './sleep_summary_card.jsx';
 import WeeklyPerformanceChart from './weekly_performance_chart.jsx';
+import { useUserData } from '../../hooks/use_user_data.js';
+import { useDashboardData } from '../../hooks/use_dashboard_data.js';
 import theme from '../../theme/index.js';
 
 export default function Dashboard() {
   const { width } = useWindowDimensions();
   const columns = width >= 900 ? 3 : width >= 520 ? 2 : 1;
   const itemWidth = columns === 1 ? '100%' : columns === 2 ? '48%' : '32%';
-  
   const [period, setPeriod] = useState('Dia');
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  const loadUserData = async () => {
-    try {
-      const userData = await getCurrentUser();
-      setUser(userData);
-    } catch (error) {
-      console.error('Erro ao carregar dados do usuário:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  
+  const { user, loading, error } = useUserData();
+  const { dashboardData, loading: dashboardLoading, error: dashboardError } = useDashboardData();
 
   // Calcula a produtividade com base nos dados reais
   const calculateProductivity = () => {
+    const stats = dashboardData?.stats || [];
     if (!stats || stats.length === 0) return 0;
-    
-    const focusCard = stats.find(s => s.key === 'focus');
-    const exerciseCard = stats.find(s => s.key === 'exercise');
-    const waterCard = stats.find(s => s.key === 'water');
-    
+
+    const focusCard = stats.find((s) => s.key === 'focus');
+    const sleepCard = stats.find((s) => s.key === 'sleep');
+
     let totalScore = 0;
     let count = 0;
 
     if (focusCard && focusCard.max > 0) {
       totalScore += (focusCard.value / focusCard.max) * 100;
-      count++;
-    }
-    
-    if (exerciseCard && exerciseCard.max > 0) {
-      totalScore += (exerciseCard.value / exerciseCard.max) * 100;
-      count++;
-    }
-    
-    if (waterCard && waterCard.max > 0) {
-      totalScore += (waterCard.value / waterCard.max) * 100;
-      count++;
+      count += 1;
     }
 
-    if (sleepScoreToday > 0) {
-      totalScore += sleepScoreToday;
-      count++;
+    if (sleepCard && sleepCard.max > 0) {
+      totalScore += (sleepCard.value / sleepCard.max) * 100;
+      count += 1;
     }
 
     return count > 0 ? Math.round(totalScore / count) : 0;
@@ -67,22 +42,18 @@ export default function Dashboard() {
 
   const productivity = calculateProductivity();
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Bom dia';
-    if (hour < 18) return 'Boa tarde';
-    return 'Boa noite';
-  };
-
-  const getUserName = () => {
-    if (!user) return 'usuário';
-    return user.apelido || user.nome || 'usuário';
-  };
-
-  if (loading) {
+  if (loading || dashboardLoading || !dashboardData) {
     return (
-      <View style={[styles.page, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={theme.colors.primary[700]} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.primary[600]} />
+      </View>
+    );
+  }
+
+  if (error || dashboardError) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: theme.colors.text.primary }}>Erro ao carregar dados do usuário</Text>
       </View>
     );
   }
@@ -91,17 +62,11 @@ export default function Dashboard() {
     <ScrollView style={styles.page} contentContainerStyle={{ padding: 16 }}>
       <View style={[styles.hero, { flexDirection: width < 520 ? 'column' : 'row', alignItems: width < 520 ? 'flex-start' : 'center' }]}>
         <View>
-          <Text style={styles.heroTitle}>{getGreeting()}, {getUserName()}! 👋</Text>
-          <Text style={styles.heroSub}>
-            {user ? 'Você está tendo um ótimo dia produtivo. Continue assim!' : 'Faça login para ver suas estatísticas'}
+          <Text style={styles.heroTitle}>
+            olá {user?.apelido || user?.nome || 'usuário'}! 👋
           </Text>
+          <Text style={styles.heroSub}>{user != null ? `Seja bem-vindo de volta! \n Oque você gostaria de fazer hoje?` : 'Você está tendo um ótimo dia produtivo. Continue assim!'}</Text>
         </View>
-        {user && (
-          <View style={[styles.heroRight, width < 520 && { marginTop: 12 }]}> 
-            <Text style={styles.heroPercent}>92%</Text>
-            <Text style={styles.heroLabel}>Produtividade</Text>
-          </View>
-        )}
       </View>
 
       <View style={styles.segmentedRow}>
@@ -130,18 +95,18 @@ export default function Dashboard() {
               title="Produtividade Geral" 
               value={productivity} 
               max={100} 
-              description="Baseado em foco, exercício, hidratação e sono"
+              description="Baseado em foco e sono"
               type="gauge"
               isPrimary={true}
             />
           </View>
 
           <View style={[styles.gridItem, { width: '100%' }]}> 
-            <SleepSummaryCard score={sleepScoreToday} avg={weekly.avgSleepScore} />
+            <SleepSummaryCard score={dashboardData.sleepScoreToday} avg={dashboardData.weekly?.avgSleepScore || 0} />
           </View>
 
           <View style={styles.grid}>
-            {stats.map((s, idx) => (
+            {(dashboardData.stats || []).map((s, idx) => (
               <View
                 key={s.key}
                 style={[styles.gridItem, { width: itemWidth, marginRight: (columns > 1 && (idx % columns) !== columns - 1) ? 12 : 0 }]}
@@ -152,21 +117,26 @@ export default function Dashboard() {
           </View>
 
           <View style={styles.recentCard}>
-            <Text style={styles.sectionTitle}>Atividade Recentes</Text>
-            {recent.map((r) => (
+            <View style={styles.recentHeaderRow}>
+              <Text style={styles.sectionTitle}>Atividades de Foco</Text>
+              <Text style={styles.summaryBadge}>
+                {dashboardData.focusSummary?.completedTasks || 0}/{dashboardData.focusSummary?.totalTasks || 0}
+              </Text>
+            </View>
+            {(dashboardData.recentFocus || []).map((r) => (
               <View key={r.id} style={styles.recentItem}>
                 <View>
                   <Text style={styles.recentTitle}>{r.title}</Text>
-                  <Text style={styles.recentTime}>{r.time}</Text>
+                  <Text style={styles.recentMeta}>{r.category} • {r.timeSpent}</Text>
+                  <Text style={styles.recentTime}>{r.date}</Text>
                 </View>
-                <Text style={styles.recentDuration}>{r.duration}</Text>
               </View>
             ))}
           </View>
         </>
       ) : (
         <View style={[styles.gridItem, { width: '100%' }]}> 
-          <WeeklyPerformanceChart days={weeklyDays} targetFocusMinutes={weeklyTargetFocusMinutes} />
+          <WeeklyPerformanceChart days={dashboardData.weeklyDays} targetFocusMinutes={dashboardData.weeklyTargetFocusMinutes} />
         </View>
       )}
     </ScrollView>
@@ -174,7 +144,7 @@ export default function Dashboard() {
 }
 
 const styles = StyleSheet.create({
-  page: { backgroundColor: theme.colors.background.primary },
+  page: { backgroundColor: theme.colors.background.light },
   hero: { 
     backgroundColor: theme.colors.primary[700], 
     paddingVertical: theme.spacing.lg,
@@ -229,7 +199,7 @@ const styles = StyleSheet.create({
   },
   segmentedRow: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.card?.light || '#FFFFFF',
     padding: theme.spacing.xs,
     borderRadius: theme.borderRadius.lg,
     marginBottom: theme.spacing.md,
@@ -253,15 +223,29 @@ const styles = StyleSheet.create({
   },
   gridItem: { marginBottom: theme.spacing.md },
   recentCard: { 
-    backgroundColor: theme.colors.card, 
+    backgroundColor: theme.colors.card?.light || '#FFFFFF', 
     padding: theme.spacing.lg, 
     borderRadius: theme.borderRadius.xl,
+  },
+  recentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: { 
     fontSize: theme.typography.fontSize.lg, 
     fontWeight: theme.typography.fontWeight.bold, 
     marginBottom: theme.spacing.md,
     color: theme.colors.text.primary,
+  },
+  summaryBadge: {
+    backgroundColor: theme.colors.primary[50],
+    color: theme.colors.primary[700],
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.lg,
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.bold,
   },
   recentItem: { 
     flexDirection: 'row', 
@@ -276,11 +260,11 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.fontWeight.semibold,
     color: theme.colors.text.primary,
   },
-  recentTime: { 
-    fontSize: theme.typography.fontSize.xs, 
+  recentMeta: {
+    fontSize: theme.typography.fontSize.xs,
     color: theme.colors.text.secondary,
   },
-  recentDuration: { 
+  recentTime: { 
     fontSize: theme.typography.fontSize.xs, 
     color: theme.colors.text.secondary,
   },
