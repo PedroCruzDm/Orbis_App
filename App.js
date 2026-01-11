@@ -30,18 +30,19 @@ function AppContent() {
   const hasAnyTool = tools?.modoFoco || tools?.modoSono || tools?.agenda;
 
   const SCREEN_ORDER = useMemo(() => {
-    if (!hasAnyTool) {
-      return ['adicionar', 'dashboard', 'perfil'];
-    }
-
+    // Ordem solicitada para swipe: Foco → Sono → Dashboard → Ranking
     const ordered = [];
+
+    if (!hasAnyTool) {
+      ordered.push('dashboard', 'adicionar', 'perfil');
+      return ordered;
+    }
 
     if (tools?.modoFoco) ordered.push('foco');
     if (tools?.modoSono) ordered.push('sono');
     ordered.push('dashboard');
-
     if (tools?.agenda) ordered.push('agenda');
-    ordered.push('ranking'); // Ranking visível quando existe alguma ferramenta ativa
+    ordered.push('ranking');
     return ordered;
   }, [hasAnyTool, tools?.agenda, tools?.modoFoco, tools?.modoSono]);
 
@@ -94,16 +95,14 @@ function AppContent() {
     }
   }, [screen, width, SCREEN_ORDER]);
 
-  useEffect(() => {   // After user logs in, start on Focus mode
+  // Mantém Dashboard como tela inicial, inclusive após login
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user && tools?.modoFoco) {
-        setScreen('foco');
-      } else {
-        setScreen('dashboard');
-      }
+      // Independente das ferramentas ativas, mantém Dashboard
+      setScreen('dashboard');
     });
     return () => unsub();
-  }, [tools?.modoFoco]);
+  }, []);
 
   const handleScrollEnd = (e) => {
     const x = e?.nativeEvent?.contentOffset?.x || 0;
@@ -121,15 +120,11 @@ function AppContent() {
   const handleScroll = (e) => {
     // Se estamos em navegação manual, ignora os eventos de scroll
     if (isManualNavigatingRef.current) return;
-    
+    // Atualiza apenas índice recente, sem trocar tela durante o scroll para evitar "pulos"
     const x = e?.nativeEvent?.contentOffset?.x || 0;
     const i = Math.round(x / width);
     if (i !== lastIndexRef.current) {
       lastIndexRef.current = i;
-      const key = keyFromIndex(i);
-      if (key && key !== screen) {
-        setScreen(key);
-      }
     }
   };
 
