@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, FlatList, Dimensions, Modal, Alert } from "react-native";
+import Svg, { Circle } from 'react-native-svg';
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { formatHMS } from "../../services/evaluator";
 import { onAuthStateChanged } from "firebase/auth";
@@ -40,6 +41,12 @@ export default function Modo_Foco() {
   const [daysStreak, setDaysStreak] = useState([]);
   const [consecutiveDays, setConsecutiveDays] = useState(0);
   const timerRef = useRef(null);
+
+  const formatMMSS = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
 
   const sortHistoryRecords = (list = []) => {
     return [...list].sort((a, b) => toDateMs(b.timestamp || b.date || b.id) - toDateMs(a.timestamp || a.date || a.id));
@@ -159,6 +166,36 @@ export default function Modo_Foco() {
     }
   };
 
+  // Função para recarregar dados do histórico
+  const reloadFocusHistory = async (uid) => {
+    if (!uid) return;
+    try {
+      const data = await getUser(uid);
+      const foco = data?.ferramentas?.foco || {};
+      const tarefas = foco?.tarefas || {};
+      const pontos = foco?.pontos || {};
+      const nivel = foco?.nivel || {};
+
+      // Prune listas temporárias conforme política
+      const pruned = await pruneTemporaryLists(uid);
+      const historicoList = pruned && Array.isArray(pruned.historico)
+        ? pruned.historico
+        : Array.isArray(tarefas.listaHistorico) ? tarefas.listaHistorico : [];
+
+      setHistory(sortHistoryRecords(historicoList));
+      const storedXpTotal = typeof nivel.xpTotal === "number" ? nivel.xpTotal : 0;
+      const computedXpTotal = computeTotalFocusXp(historicoList);
+      setXpTotal(Math.max(storedXpTotal, computedXpTotal));
+      const streak = computeDaysStreak(historicoList);
+      setDaysStreak(streak);
+      setConsecutiveDays(computeConsecutiveDays(streak));
+      setPointsToday(typeof pontos.pontosHoje === "number" ? pontos.pontosHoje : 0);
+      setXpToday(typeof nivel.xpHoje === "number" ? nivel.xpHoje : 0);
+    } catch (e) {
+      console.error("Erro ao recarregar histórico:", e);
+    }
+  };
+
   // Ao logar, carrega dados de foco do usuário (com defaults 0 se vazio)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -169,34 +206,17 @@ export default function Modo_Foco() {
         return;
       }
       setUserUid(user.uid);
-      try {
-        const data = await getUser(user.uid);
-        const foco = data?.ferramentas?.foco || {};
-        const tarefas = foco?.tarefas || {};
-        const pontos = foco?.pontos || {};
-        const nivel = foco?.nivel || {};
-
-        // Prune listas temporárias conforme política
-        const pruned = await pruneTemporaryLists(user.uid);
-        const historicoList = pruned && Array.isArray(pruned.historico)
-          ? pruned.historico
-          : Array.isArray(tarefas.listaHistorico) ? tarefas.listaHistorico : [];
-
-        setHistory(sortHistoryRecords(historicoList));
-        const storedXpTotal = typeof nivel.xpTotal === "number" ? nivel.xpTotal : 0;
-        const computedXpTotal = computeTotalFocusXp(historicoList);
-        setXpTotal(Math.max(storedXpTotal, computedXpTotal));
-        const streak = computeDaysStreak(historicoList);
-        setDaysStreak(streak);
-        setConsecutiveDays(computeConsecutiveDays(streak));
-        setPointsToday(typeof pontos.pontosHoje === "number" ? pontos.pontosHoje : 0);
-        setXpToday(typeof nivel.xpHoje === "number" ? nivel.xpHoje : 0);
-      } catch (e) {
-        // Mantém defaults locais se houver erro
-      }
+      await reloadFocusHistory(user.uid);
     });
     return () => unsub();
   }, []);
+
+  // Recarrega dados quando o modal de histórico é aberto (mas apenas se o timer não estiver rodando)
+  useEffect(() => {
+    if (showHistoryModal && userUid && !running) {
+      reloadFocusHistory(userUid);
+    }
+  }, [showHistoryModal, userUid]);
 
   const onStopAndValidate = async () => {
     setRunning(false);
@@ -205,12 +225,15 @@ export default function Modo_Foco() {
     if (timerMode === 'cronometro') {
       
       // Modo cronômetro: XP (5-10) após 20min; falha se <20min
-      const minutes = Math.floor(elapsed / 60);
+      const minutes = Math.floor(elapsed / 60);  // Bônus: +2 XP a cada 10 minutos extras
       if (minutes >= 20) {
-        const xpGenerated = Math.floor(Math.random() * 6) + 5; // 5-10
+        const baseXp = Math.floor(Math.random() * 6) + 5; // 5-10
+        const extraMinutes = minutes - 20; // Minutos além dos 20 iniciais
+        const bonusXp = Math.floor(extraMinutes / 10) * 2; // +2 XP a cada 10 min
+        const xpGenerated = baseXp + bonusXp;
         validationResult = {
           status: 'Sucesso',
-          message: 'Foco Profundo Concluído! Excelente trabalho.',
+          message: `Foco Profundo Concluído! Excelente trabalho.${bonusXp > 0 ? ` +${bonusXp} XP bônus!` : ''}`,
           xp: xpGenerated
         };
       } else {
@@ -439,30 +462,64 @@ export default function Modo_Foco() {
         </View>
 
           <View style={styles.timerCircle}>
-            {timerMode === 'cronometro' ? (
-              <Text style={styles.timerText}>
-                {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
-              </Text>
-            ) : (
-              <View style={styles.timerCountdown}>
-                {elapsed >= customTime ? (
-                  <>
-                    <Text style={[styles.timerText, { color: '#10B981', fontSize: 40 }]} numberOfLines={1}>
-                      +{String(Math.floor((elapsed - customTime) / 60)).padStart(2, '0')}:{String((elapsed - customTime) % 60).padStart(2, '0')}
+            {/* Circular progress */}
+            {(() => {
+              const size = 220;
+              const strokeWidth = 10;
+              const radius = (size - strokeWidth) / 2;
+              const circumference = 2 * Math.PI * radius;
+              const total = timerMode === 'tempo' ? customTime : 1500; // 25min padrão para cronômetro
+              const effectiveElapsed = timerMode === 'tempo' ? Math.min(elapsed, customTime) : elapsed % total;
+              const pct = Math.max(0, Math.min(100, Math.round((effectiveElapsed / total) * 100)));
+              const dashOffset = circumference - (pct / 100) * circumference;
+              const label = selectedCategory === 'descanso' ? 'Pausa Curta' : (currentFocusTaskName?.trim() || (currentCategory?.label || 'Foco'));
+              const timeText = timerMode === 'tempo'
+                ? (elapsed >= customTime ? `+${formatMMSS(elapsed - customTime)}` : formatMMSS(customTime - elapsed))
+                : (elapsed >= 3600 ? formatHMS(elapsed) : formatMMSS(elapsed));
+              return (
+                <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+                  <Svg width={size} height={size} style={styles.timerSvg}>
+                    <Circle cx={size/2} cy={size/2} r={radius} stroke="#E5E7EB" strokeWidth={strokeWidth} fill="none" />
+                    <Circle
+                      cx={size/2}
+                      cy={size/2}
+                      r={radius}
+                      stroke="#10B981"
+                      strokeWidth={strokeWidth}
+                      fill="none"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={dashOffset}
+                      strokeLinecap="round"
+                      transform={`rotate(-270 ${size/2} ${size/2})`}
+                    />
+                  </Svg>
+                  <View style={styles.timerCenter}> 
+                    <Text style={[styles.timerValueText, elapsed >= 3600 && { fontSize: 40 }]} numberOfLines={1} adjustsFontSizeToFit>
+                      {timeText}
                     </Text>
-                    <Text style={styles.timerSubtext}>tempo extra</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.timerText}>
-                      {String(Math.floor((customTime - elapsed) / 60)).padStart(2, '0')}:{String((customTime - elapsed) % 60).padStart(2, '0')}
-                    </Text>
-                    <Text style={styles.timerSubtext}>de {Math.floor(customTime / 60)} min</Text>
-                  </>
-                )}
-              </View>
-            )}
+                    <Text style={styles.timerLabelText}>{label}</Text>
+                  </View>
+                </View>
+              );
+            })()}
           </View>
+
+          {/* Dots + sessões hoje */}
+          {(() => {
+            const todayStr = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const sessionsToday = history.filter(h => (h.dia || h.date || '').includes(todayStr)).length;
+            const dots = 5;
+            return (
+              <View style={styles.sessionsRow}> 
+                <View style={styles.dotsRow}>
+                  {Array.from({ length: dots }, (_, i) => (
+                    <View key={`dot-${i}`} style={[styles.dot, i < Math.min(sessionsToday, dots) && styles.dotActive]} />
+                  ))}
+                </View>
+                <Text style={styles.sessionsText}>{sessionsToday} sessões hoje</Text>
+              </View>
+            );
+          })()}
           {running && currentCategory && (
             <View style={styles.activeCategoryPill}>
               <MaterialCommunityIcons name={currentCategory.icon} size={16} color="#0EA5A4" />
@@ -984,23 +1041,22 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   timerCircle: {
-    width: 190,
-    height: 190,
-    borderRadius: 90,
-    borderWidth: 8,
-    borderColor: "#E5E7EB",
+    width: 220,
+    height: 220,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 10,
   },
-  timerText: {
-    fontSize: 48,
+  timerSvg: { position: 'absolute' },
+  timerCenter: { alignItems: 'center', justifyContent: 'center' },
+  timerValueText: {
+    fontSize: 46,
     fontWeight: "700",
     color: "#1F2937",
     fontFamily: "monospace",
     textAlign: "center",
     includeFontPadding: false,
   },
+  timerLabelText: { fontSize: 13, color: "#6B7280", marginTop: 4 },
   timerCountdown: {
     alignItems: "center",
     justifyContent: "center",
@@ -1064,6 +1120,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 8,
   },
+  roundControlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18, marginTop: 12, marginBottom: 8 },
+  roundBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  roundBtnPrimary: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', shadowColor: '#8B5CF6', shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
+  roundBtnPrimaryActive: { backgroundColor: '#6366F1' },
+  sessionsRow: { alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E5E7EB' },
+  dotActive: { backgroundColor: '#6EE7B7' },
+  sessionsText: { fontSize: 12, color: '#6B7280' },
   btnStart: {
     flex: 1,
     flexDirection: "row",
