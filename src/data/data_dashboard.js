@@ -1,5 +1,3 @@
-import react from "react";
-
 // Dados diários
 const sleepScoreToday = 72; // 0-100
 const stats = [
@@ -12,8 +10,39 @@ const stats = [
     type: 'gauge' 
   },
   { 
-    key: 'foco', title: 'Tempo de Foco', value: 180, max: 240, description: 'minutos hoje', type: 'gauge' },
-  { key: 'dias', title: 'Dias Consecutivos', value: 5, max: 7, description: 'Sequência ativa', type: 'days', days: [false,true,true,true,true,true,true] },
+    key: 'foco', 
+    title: 'Tempo de Foco', 
+    value: 180, 
+    max: 240, 
+    description: 'minutos hoje', 
+    type: 'gauge' 
+  },
+  { 
+    key: 'dias', 
+    title: 'Dias Consecutivos', 
+    value: 0, 
+    max: 7, 
+    description: 'Sequência zerada', 
+    type: 'days', 
+    // IMPORTANTE: A contagem é regressiva a partir de HOJE (índice 6 = terça-feira)
+    // Índices: [0=Qua, 1=Qui, 2=Sex, 3=Sab, 4=Dom, 5=Seg (ontem), 6=Ter (hoje)]
+    // 
+    // Exemplo 1: Se hoje é terça SEM atividade
+    // days: [T,T,T,T,T,T,F] → Contagem = 0 (Ter=false, quebra a sequência no topo)
+    // 
+    // Exemplo 2: Se hoje é terça COM atividade (mas segunda não)
+    // days: [T,T,T,T,T,F,T] → Contagem = 1 (apenas Ter=true, porque Seg=false quebra)
+    // 
+    // Exemplo 3: Se Segunda e Terça têm atividade (consecutivos até hoje)
+    // days: [T,T,T,T,T,T,T] → Contagem = 2+ (Seg=true, Ter=true, e continua...)
+    //
+    // Regra: Só conta dias CONSECUTIVOS a partir de HOJE voltando no tempo
+    // Quando encontra um false, a contagem PARA e reseta
+    // 
+    // Situação atual: Ontem (segunda, índice 5) NÃO foi realizada tarefa
+    // Resultado: Sequência zerada
+    days: [false, false, false, false, false, false, false] 
+  },
 ];
 
 const recent = [

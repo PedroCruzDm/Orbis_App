@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, TextInput, Switch, Alert, ScrollView, StyleSheet, Platform } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Modal, TextInput, Switch, Alert, ScrollView, StyleSheet, Platform, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import theme from '../../theme';
 import { createUser, loginUser } from '../../data/user';
@@ -7,9 +7,11 @@ import { auth } from '../../services/firebase/firebase_config';
 import {signOut } from 'firebase/auth';
 import { useUserData } from '../../hooks/use_user_data';
 import ProfileModal from './profile_modal';
+import { useTools } from '../../contexts/ToolsContext';
 
 const Header = () => {
     const { user, loading } = useUserData();
+    const { tools, updateTools, setOpenToolsModal } = useTools();
     const [showUserModal, setShowUserModal] = useState(false);
     const [showAccountMenu, setShowAccountMenu] = useState(false);
     const [showToolsModal, setShowToolsModal] = useState(false);
@@ -23,11 +25,11 @@ const Header = () => {
     const [initialEvent, setInitialEvent] = useState('');
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [gameXPEnabled, setGameXPEnabled] = useState(false);
-    const [tools, setTools] = useState({
-        modoFoco: true,
-        modoSono: true,
-        agenda: true,
-    });
+
+    // Registra a função para abrir o modal de ferramentas
+    useEffect(() => {
+        setOpenToolsModal(() => () => setShowToolsModal(true));
+    }, [setOpenToolsModal]);
 
     const openUser = () => {
         if (user) {
@@ -99,7 +101,14 @@ const Header = () => {
     return (
         <View style={styles.header}>
             <View style={styles.nav}>
-                <Text style={styles.brand}>Orbis</Text>
+                <View style={styles.logoContainer}>
+                    <Image
+                        source={require('../../../assets/Orbis_Dark_logo-removebg-preview.png')}
+                        style={styles.logoImage}
+                        resizeMode="contain"
+                    />
+                    <Text style={styles.brand}>Orbis</Text>
+                </View>
                 <View style={styles.navRight}>
                     {user && (
                         <View style={styles.userInfo}>
@@ -345,7 +354,7 @@ const Header = () => {
                                 <TouchableOpacity
                                     key={key}
                                     style={styles.toolsItem}
-                                    onPress={() => setTools((prev) => ({ ...prev, [key]: !prev[key] }))}
+                                    onPress={() => updateTools({ ...tools, [key]: !tools[key] })}
                                 >
                                     <View style={styles.toolsItemLeft}>
                                         <MaterialCommunityIcons 
@@ -609,6 +618,15 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: '#1F2937',
+    },
+    logoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.spacing.sm,
+    },
+    logoImage: {
+        width: 40,
+        height: 40,
     },
 });
 

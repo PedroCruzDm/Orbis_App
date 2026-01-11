@@ -27,7 +27,6 @@ export const auth = initializeAuth(app, {
 // Initialize other Firebase services
 export const database = getDatabase(app);
 export const storage = getStorage(app);
-// Analytics não funciona em React Native - removido
 export const db = getFirestore(app);
 export const db_User = db; // alias if needed elsewhere
 export const eventosRef = collection(db, 'Usuarios');

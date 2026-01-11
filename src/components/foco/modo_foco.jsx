@@ -8,7 +8,6 @@ import { getUser } from "../../data/user";
 import { doc, updateDoc, arrayUnion, increment } from "firebase/firestore";
 import { focoInitialHistory } from '../../data/data';
 
-const isTablet = Dimensions.get("window").width >= 768;
 const FOCUS_CATEGORIES = [ // Categorias de foco com ícones
   { id: 'ler', label: 'Ler', icon: 'book-open-page-variant', color: '#3B82F6' },
   { id: 'estudar', label: 'Estudar', icon: 'school', color: '#8B5CF6' },
@@ -23,11 +22,12 @@ export default function Modo_Foco() {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0); // em segundos
   const [result, setResult] = useState(null); // { status, message, xp }
-  const [currentFocusTaskName, setCurrentFocusTaskName] = useState(""); // Nome da tarefa atual durante foco
+  const [currentFocusTaskName, setCurrentFocusTaskName] = useState(""); // Nome da tarefa atual
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [history, setHistory] = useState(focoInitialHistory);
   const [pointsToday, setPointsToday] = useState(0);
   const [xpToday, setXpToday] = useState(0);
+  const [xpTotal, setXpTotal] = useState(0);
   const [userUid, setUserUid] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [timerMode, setTimerMode] = useState('cronometro'); // 'cronometro' ou 'tempo'
@@ -37,10 +37,61 @@ export default function Modo_Foco() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
+  const [daysStreak, setDaysStreak] = useState([]);
+  const [consecutiveDays, setConsecutiveDays] = useState(0);
   const timerRef = useRef(null);
 
   const sortHistoryRecords = (list = []) => {
     return [...list].sort((a, b) => toDateMs(b.timestamp || b.date || b.id) - toDateMs(a.timestamp || a.date || a.id));
+  };
+
+  // Soma XP apenas de sessões concluídas com sucesso (XP positivo)
+  const computeTotalFocusXp = (list = []) => {
+    return list.reduce((acc, item) => {
+      const isSuccess = item?.statusTarefa === 'concluida' || item?.status === 'Sucesso';
+      if (!isSuccess) return acc;
+      const rawXp = Number(item?.xpGerado ?? item?.xp ?? 0);
+      const xp = Number.isFinite(rawXp) ? rawXp : 0;
+      return xp > 0 ? acc + xp : acc;
+    }, 0);
+  };
+
+  // Calcula os dias da semana com tarefas bem-sucedidas
+  const computeDaysStreak = (list = []) => {
+    const today = new Date();
+    const dayIndices = {};
+    
+    // Preenche os últimos 7 dias a partir de hoje
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - (6 - i));
+      const dayStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      dayIndices[dayStr] = i;
+    }
+    
+    const days = Array(7).fill(false);
+    list.forEach((item) => {
+      const isSuccess = item?.statusTarefa === 'concluida' || item?.status === 'Sucesso';
+      if (!isSuccess) return;
+      const itemDate = item?.dia || item?.date;
+      if (itemDate && dayIndices[itemDate] !== undefined) {
+        days[dayIndices[itemDate]] = true;
+      }
+    });
+    
+    return days;
+  };
+
+  const computeConsecutiveDays = (days = []) => {
+    let count = 0;
+    for (let i = days.length - 1; i >= 0; i--) {
+      if (days[i]) {
+        count++;
+      } else {
+        break; // Para na primeira inatividade (reinicia a contagem)
+      }
+    }
+    return count;
   };
 
   useEffect(() => {
@@ -113,6 +164,8 @@ export default function Modo_Foco() {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setUserUid(null);
+        setXpToday(0);
+        setXpTotal(0);
         return;
       }
       setUserUid(user.uid);
@@ -125,11 +178,17 @@ export default function Modo_Foco() {
 
         // Prune listas temporárias conforme política
         const pruned = await pruneTemporaryLists(user.uid);
-        if (pruned && Array.isArray(pruned.historico)) {
-          setHistory(sortHistoryRecords(pruned.historico));
-        } else {
-          setHistory(sortHistoryRecords(Array.isArray(tarefas.listaHistorico) ? tarefas.listaHistorico : []));
-        }
+        const historicoList = pruned && Array.isArray(pruned.historico)
+          ? pruned.historico
+          : Array.isArray(tarefas.listaHistorico) ? tarefas.listaHistorico : [];
+
+        setHistory(sortHistoryRecords(historicoList));
+        const storedXpTotal = typeof nivel.xpTotal === "number" ? nivel.xpTotal : 0;
+        const computedXpTotal = computeTotalFocusXp(historicoList);
+        setXpTotal(Math.max(storedXpTotal, computedXpTotal));
+        const streak = computeDaysStreak(historicoList);
+        setDaysStreak(streak);
+        setConsecutiveDays(computeConsecutiveDays(streak));
         setPointsToday(typeof pontos.pontosHoje === "number" ? pontos.pontosHoje : 0);
         setXpToday(typeof nivel.xpHoje === "number" ? nivel.xpHoje : 0);
       } catch (e) {
@@ -141,10 +200,10 @@ export default function Modo_Foco() {
 
   const onStopAndValidate = async () => {
     setRunning(false);
-    
     let validationResult = null;
     
     if (timerMode === 'cronometro') {
+      
       // Modo cronômetro: XP (5-10) após 20min; falha se <20min
       const minutes = Math.floor(elapsed / 60);
       if (minutes >= 20) {
@@ -183,6 +242,10 @@ export default function Modo_Foco() {
     setResult(validationResult);
     setShowResultModal(true);
     const categoryInfo = FOCUS_CATEGORIES.find((cat) => cat.id === selectedCategory);
+
+    // XP que conta para nível (somente sucessos)
+    const xpDelta = validationResult?.status === 'Sucesso' ? validationResult.xp : 0;
+    let xpApplied = false;
     
     // Adiciona ao histórico se houver resultado
     if (validationResult) {
@@ -227,8 +290,8 @@ export default function Modo_Foco() {
           const userRef = doc(db, "Usuarios", userUid);
           const updates = {
             "ferramentas.foco.tarefas.listaHistorico": arrayUnion(sessionRecord),
-            "ferramentas.foco.nivel.xpHoje": increment(validationResult.xp),
-            "ferramentas.foco.nivel.xpTotal": increment(validationResult.xp),
+            "ferramentas.foco.nivel.xpHoje": increment(xpDelta),
+            "ferramentas.foco.nivel.xpTotal": increment(xpDelta),
             updatedAt: new Date(),
           };
 
@@ -244,18 +307,30 @@ export default function Modo_Foco() {
 
           await updateDoc(userRef, updates);
 
-          // Atualiza estado local
-          setXpToday((prev) => prev + validationResult.xp);
+          // Atualiza estado local apenas quando há XP de sucesso
+          setXpToday((prev) => prev + xpDelta);
+          setXpTotal((prev) => prev + xpDelta);
+          xpApplied = true;
 
           // Após salvar, aplica política de retenção (falhada: 1 semana, histórico: 1 mês)
           const pruned = await pruneTemporaryLists(userUid);
           if (pruned && Array.isArray(pruned.historico)) {
             setHistory(sortHistoryRecords(pruned.historico));
+            setXpTotal(computeTotalFocusXp(pruned.historico));
+            const streak = computeDaysStreak(pruned.historico);
+            setDaysStreak(streak);
+            setConsecutiveDays(computeConsecutiveDays(streak));
           }
         } catch (error) {
-          console.error("Erro ao salvar foco no Firebase:", error);
+          console.error("Erro ao salvar foco:", error);
         }
       }
+    }
+
+    // Mesmo offline, aplica XP ao nível local quando sucesso (sem duplicar)
+    if (validationResult && !xpApplied && xpDelta > 0) {
+      setXpToday((prev) => prev + xpDelta);
+      setXpTotal((prev) => prev + xpDelta);
     }
     
     // Reseta timer após 2 segundos
@@ -314,6 +389,7 @@ export default function Modo_Foco() {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+  
         {/* Header */}
         <View style={styles.header}>
           <View>
@@ -321,9 +397,6 @@ export default function Modo_Foco() {
             <Text style={styles.headerSubtitle}>Concentre-se no que realmente importa</Text>
           </View>
         </View>
-
-        {/* Timer Mode Toggle */}
-
 
         {/* Timer Circle */}
         <View style={styles.timerContainer}>
@@ -337,14 +410,6 @@ export default function Modo_Foco() {
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.headerIconButton}
-                    onPress={() => setShowSettingsModal(true)}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <MaterialCommunityIcons name="cog-outline" size={24} color="#9CA3AF" />
-              </TouchableOpacity>
-                    
-              <TouchableOpacity style={styles.headerIconButton}
                 onPress={() => setShowHistoryModal(true)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -352,8 +417,7 @@ export default function Modo_Foco() {
                 <MaterialCommunityIcons name="history" size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
-
-                    <View style={styles.timerModeToggle}>
+              <View style={styles.timerModeToggle}>
           <TouchableOpacity
             style={[styles.modeButton, timerMode === 'cronometro' && styles.modeButtonActive]}
             onPress={() => onTimerModeChange('cronometro')}
@@ -406,6 +470,26 @@ export default function Modo_Foco() {
             </View>
           )}
         </View>
+
+        {/* Task Name Input */}
+        {!running && (
+          <View style={styles.taskNameSection}>
+            <Text style={styles.taskNameLabel}>Nome da Tarefa (Opcional):</Text>
+            <TextInput
+              style={styles.taskNameInput}
+              placeholder="Digite o nome da tarefa..."
+              placeholderTextColor="#9CA3AF"
+              value={currentFocusTaskName}
+              onChangeText={setCurrentFocusTaskName}
+              editable={!running}
+            />
+            {currentFocusTaskName.trim() === '' && selectedCategory && (
+              <Text style={styles.taskNameHint}>
+                Se não preenchido, será usado: "{FOCUS_CATEGORIES.find(cat => cat.id === selectedCategory)?.label || 'Foco'}"
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* Buttons */}
         <View style={styles.buttonsContainer}>
@@ -469,9 +553,16 @@ export default function Modo_Foco() {
         <View style={styles.historyModalOverlay}>
           <View style={styles.historyModalContent}>
             <View style={styles.historyModalHeader}>
-              <Text style={styles.historyModalTitle}>Histórico de Tarefas</Text>
-              <TouchableOpacity onPress={() => setShowHistoryModal(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#9CA3AF" />
+              <View>
+                <Text style={styles.historyModalTitle}>Histórico de Tarefas</Text>
+                <Text style={styles.historyModalSubtitle}>{history.length} {history.length === 1 ? 'sessão registrada' : 'sessões registradas'}</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setShowHistoryModal(false)}
+                style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
@@ -481,53 +572,105 @@ export default function Modo_Foco() {
                 keyExtractor={(item) => item.id.toString()}
                 scrollEnabled={true}
                 nestedScrollEnabled={true}
-                showsVerticalScrollIndicator
+                showsVerticalScrollIndicator={true}
                 contentContainerStyle={styles.historyListContent}
                 renderItem={({ item }) => {
                   const statusLabel = item.statusTarefa === 'concluida' ? 'Concluída' : 
-                                     item.statusTarefa === 'pendente' ? 'Pendente' : 
-                                     item.statusTarefa === 'falha' ? 'Falha' : 
-                                     (item.status === 'Sucesso' ? 'Concluída' : 
-                                      item.status === 'Parcial' ? 'Pendente' : 'Falha');
+                    item.statusTarefa === 'pendente' ? 'Pendente' : 
+                    item.statusTarefa === 'falha' ? 'Falha' : 
+                    (item.status === 'Sucesso' ? 'Concluída' : 
+                    item.status === 'Parcial' ? 'Pendente' : 'Falha');
                   
-                  const statusColor = item.statusTarefa === 'concluida' || item.status === 'Sucesso' ? '#10B981' :
-                                     item.statusTarefa === 'pendente' || item.status === 'Parcial' ? '#F59E0B' : '#EF4444';
+                  const isSuccess = item.statusTarefa === 'concluida' || item.status === 'Sucesso';
+                  const isFailed = item.statusTarefa === 'falha' || item.status === 'Falha';
+                  
+                  const categoryInfo = FOCUS_CATEGORIES.find(
+                    cat => cat.id === item.categoriaId || cat.label === item.categoria
+                  );
                   
                   return (
-                  <View style={styles.historyItem}>
-                    <View style={styles.historyItemLeft}>
-                      <View style={[
-                        styles.historyStatusIndicator,
-                        { backgroundColor: statusColor }
-                      ]} />
-                      <View style={styles.historyItemContent}>
-                        <Text style={styles.historyItemTitle} numberOfLines={1}>
-                          {item.nomeTarefa || item.titulo || item.title || 'Tarefa sem nome'}
-                        </Text>
-                        <Text style={styles.historyItemCategory}>
-                          {item.categoria || item.categoriaTitulo || 'Sem categoria'} • {item.tempo || item.tempoFoco || item.timeSpent}
-                        </Text>
-                        <View style={styles.historyItemMeta}>
-                          <Text style={styles.historyItemDate}>
-                            {item.dia || item.date}
+                    <View style={styles.historyCard}>
+                      {/* Icon & Category */}
+                      <View style={styles.historyCardHeader}>
+                        <View style={[
+                          styles.categoryIconContainer,
+                          { backgroundColor: categoryInfo?.color ? `${categoryInfo.color}15` : '#F3F4F6' }
+                        ]}>
+                          <MaterialCommunityIcons 
+                            name={categoryInfo?.icon || 'bookmark-outline'} 
+                            size={20} 
+                            color={categoryInfo?.color || '#9CA3AF'} 
+                          />
+                        </View>
+                        <View style={styles.historyCardHeaderText}>
+                          <Text style={styles.historyCardTitle} numberOfLines={1}>
+                            {item.nomeTarefa || item.titulo || item.title || 'Tarefa sem nome'}
                           </Text>
-                          <Text style={[styles.historyItemStatus, { color: statusColor }]}>
+                          <Text style={styles.historyCardCategory}>
+                            {item.categoria || item.categoriaTitulo || 'Sem categoria'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Info Row */}
+                      <View style={styles.historyCardInfo}>
+                        <View style={styles.infoItem}>
+                          <MaterialCommunityIcons name="clock-outline" size={14} color="#6B7280" />
+                          <Text style={styles.infoText}>{item.tempo || item.tempoFoco || item.timeSpent}</Text>
+                        </View>
+                        <View style={styles.infoItem}>
+                          <MaterialCommunityIcons name="calendar-outline" size={14} color="#6B7280" />
+                          <Text style={styles.infoText}>{item.dia || item.date}</Text>
+                        </View>
+                      </View>
+
+                      {/* Footer: Status & XP */}
+                      <View style={styles.historyCardFooter}>
+                        <View style={[
+                          styles.statusBadge,
+                          isSuccess && styles.statusBadgeSuccess,
+                          isFailed && styles.statusBadgeFail
+                        ]}>
+                          <MaterialCommunityIcons 
+                            name={isSuccess ? 'check-circle' : isFailed ? 'close-circle' : 'alert-circle'} 
+                            size={12} 
+                            color={isSuccess ? '#059669' : isFailed ? '#DC2626' : '#D97706'} 
+                          />
+                          <Text style={[
+                            styles.statusBadgeText,
+                            isSuccess && styles.statusBadgeTextSuccess,
+                            isFailed && styles.statusBadgeTextFail
+                          ]}>
                             {statusLabel}
+                          </Text>
+                        </View>
+                        <View style={styles.xpBadge}>
+                          <MaterialCommunityIcons 
+                            name="star-circle" 
+                            size={16} 
+                            color={isSuccess ? '#10B981' : '#EF4444'} 
+                          />
+                          <Text style={[
+                            styles.xpBadgeText,
+                            isSuccess && styles.xpBadgeTextPositive
+                          ]}>
+                            {(item.xpGerado || item.xp) > 0 ? '+' : ''}{item.xpGerado || item.xp} XP
                           </Text>
                         </View>
                       </View>
                     </View>
-                    <View style={styles.historyItemRight}>
-                      <Text style={styles.historyItemXp}>+{item.xpGerado || item.xp}xp</Text>
-                    </View>
-                  </View>
                   );
                 }}
               />
             ) : (
               <View style={styles.emptyHistory}>
-                <MaterialCommunityIcons name="history" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyHistoryText}>Nenhuma tarefa completada</Text>
+                <View style={styles.emptyHistoryIcon}>
+                  <MaterialCommunityIcons name="history" size={56} color="#D1D5DB" />
+                </View>
+                <Text style={styles.emptyHistoryTitle}>Nenhuma tarefa registrada</Text>
+                <Text style={styles.emptyHistoryText}>
+                  Complete uma sessão de foco para ver seu histórico aqui
+                </Text>
               </View>
             )}
           </View>
@@ -547,25 +690,84 @@ export default function Modo_Foco() {
 
             <ScrollView style={styles.helpContent} showsVerticalScrollIndicator={false}>
               <View style={styles.helpSection}>
-                <Text style={styles.helpSectionTitle}>Modo Cronômetro</Text>
+                <Text style={styles.helpSectionTitle}>O Que é Foco?</Text>
                 <Text style={styles.helpSectionText}>
-                  Cronômetro livre onde você pode focar o tempo que quiser. Ao concluir com 20 minutos ou mais, você ganha 5-10 XP. Se falhar (menos de 20 minutos), ganha 0 XP.
+                  Foco é a capacidade de direcionar sua atenção para uma tarefa específica, ignorando distrações. É uma habilidade treinável influenciada por sono, nutrição e ambiente.
                 </Text>
               </View>
 
               <View style={styles.helpSection}>
-                <Text style={styles.helpSectionTitle}>Modo Tempo Definido</Text>
+                <Text style={styles.helpSectionTitle}>Benefícios do Foco</Text>
                 <Text style={styles.helpSectionText}>
-                  Você define um tempo específico. Se completar o tempo, ganha 5-10 XP. Se interromper antes, perde 5-10 XP.
+                  • Produtividade: Aumenta eficiência em até 25%{'\n'}
+                  • Saúde: Melhora cognição, humor e energia{'\n'}
+                  • Bem-estar: Reduz estresse e ansiedade{'\n'}
+                  • Realização: Cria motivação positiva
                 </Text>
               </View>
 
               <View style={styles.helpSection}>
-                <Text style={styles.helpSectionTitle}>XP e Recompensas</Text>
+                <Text style={styles.helpSectionTitle}>Dicas para Melhorar o Foco</Text>
                 <Text style={styles.helpSectionText}>
-                  • Sucesso: +5 a +10 XP{'\n'}
-                  • Falha: 0 XP (cronômetro) ou -5 a -10 XP (tempo definido){'\n'}
-                  • XP acumula diariamente e conta para seu nível
+                  • Técnica Pomodoro: Blocos de 25 min + pausas{'\n'}
+                  • Meditação: 10-15 min diários{'\n'}
+                  • Exercício: 150 min de atividade aeróbica/semana{'\n'}
+                  • Ambiente: Espaço organizado, sem distrações{'\n'}
+                  • Sono: 7-9 horas por noite{'\n'}
+                  • Metas: 3-5 objetivos diários
+                </Text>
+              </View>
+
+              <View style={styles.helpSection}>
+                <Text style={styles.helpSectionTitle}>Ferramentas do Modo Foco</Text>
+                <Text style={styles.helpSectionText}>
+                  O Modo Foco oferece várias ferramentas para ajudar você a se concentrar e acompanhar seu progresso:
+                </Text>
+              </View>
+
+              <View style={styles.helpSection}>
+                <Text style={styles.helpSectionTitle}>📱 Modo Cronômetro</Text>
+                <Text style={styles.helpSectionText}>
+                  Cronômetro livre onde você pode focar o tempo que quiser. Ao concluir com 20 minutos ou mais, você ganha 5-10 XP. Se falhar (menos de 20 minutos), ganha 0 XP.{'\n\n'}
+                  • Ideal para: Sessões flexíveis e adaptáveis{'\n'}
+                  • Mínimo: 20 minutos para ganhar XP{'\n'}
+                  • Recompensa: 5-10 XP por sucesso
+                </Text>
+              </View>
+
+              <View style={styles.helpSection}>
+                <Text style={styles.helpSectionTitle}>⏱️ Modo Tempo Definido</Text>
+                <Text style={styles.helpSectionText}>
+                  Você define um tempo específico. Se completar o tempo, ganha 5-10 XP. Se interromper antes, perde 5-10 XP.{'\n\n'}
+                  • Ideal para: Sessões estruturadas e metas claras{'\n'}
+                  • Penalidade: -5 a -10 XP por interrupção{'\n'}
+                  • Recompensa: 5~10 XP ao completar + tempo extra em destaque
+                </Text>
+              </View>
+
+              <View style={styles.helpSection}>
+                <Text style={styles.helpSectionTitle}>🏷️ Categorias</Text>
+                <Text style={styles.helpSectionText}>
+                  Classifique suas sessões em categorias para melhor organização:{'\n'}
+                  • Ler: Para leitura e estudos de textos{'\n'}
+                  • Estudar: Para aprendizado e aulas{'\n'}
+                  • Praticar: Para exercícios e treinos{'\n'}
+                  • Revisar: Para revisão de conteúdo{'\n'}
+                  • Descanso: Para atividades relaxantes{'\n'}
+                  • Treinar: Para atividades físicas{'\n'}
+                  • Assistir: Para vídeos e conteúdo visual
+                </Text>
+              </View>
+
+              <View style={styles.helpSection}>
+                <Text style={styles.helpSectionTitle}>📊 Histórico de Tarefas</Text>
+                <Text style={styles.helpSectionText}>
+                  Visualize todas as suas sessões de foco concluídas. O histórico mostra:{'\n'}
+                  • Nome e categoria da tarefa{'\n'}
+                  • Tempo investido{'\n'}
+                  • Status (Concluída, Pendente, Falha){'\n'}
+                  • XP ganho ou perdido{'\n'}
+                  • Data e hora da sessão
                 </Text>
               </View>
 
@@ -587,7 +789,7 @@ export default function Modo_Foco() {
         </View>
       </Modal>
 
-      {/* Modal - Configurações */}
+      {/* Modal - Configurações  EM BREVE   */}
       <Modal visible={showSettingsModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: "85%" }]}>
@@ -825,6 +1027,37 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 13,
   },
+  taskNameSection: {
+    marginBottom: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    backgroundColor: "#FFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  taskNameLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  taskNameInput: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#1F2937",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginBottom: 8,
+  },
+  taskNameHint: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontStyle: "italic",
+  },
   buttonsContainer: {
     flexDirection: "row",
     gap: 12,
@@ -882,6 +1115,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 24,
     fontStyle: "italic",
+  },
+  streakSection: {
+    marginBottom: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  streakTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  streakMessage: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#F59E0B",
+    marginTop: 8,
+    textAlign: "center",
   },
   categoriesSection: {
     marginBottom: 24,
@@ -977,17 +1233,17 @@ const styles = StyleSheet.create({
     color: "#6B7280",
   },
   modalBtnConfirm: {
-    flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     borderRadius: 8,
     backgroundColor: "#0EA5A4",
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 48,
   },
   modalBtnConfirmText: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "700",
     color: "#FFF",
     textAlign: "center",
   },
@@ -1128,61 +1384,170 @@ const styles = StyleSheet.create({
   },
   historyModalContent: {
     backgroundColor: "#FFF",
-    borderRadius: 16,
-    width: "90%",
-    maxHeight: "70%",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
+    borderRadius: 20,
+    width: "92%",
+    maxHeight: "75%",
+    paddingTop: 20,
+    paddingBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
   },
   historyModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  historyModalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  historyListContent: {
-    paddingBottom: 8,
-  },
-  historyItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },
-  historyItemLeft: {
+  historyModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  historyModalSubtitle: {
+    fontSize: 13,
+    color: "#9CA3AF",
+  },
+  closeButton: {
+    padding: 4,
+    borderRadius: 8,
+  },
+  historyListContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  historyCard: {
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  historyCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
+    marginBottom: 12,
     gap: 12,
   },
-  historyStatusIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#D1D5DB",
+  categoryIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  statusSuccess: {
-    backgroundColor: "#10B981",
+  historyCardHeaderText: {
+    flex: 1,
+  },
+  historyCardTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 2,
+  },
+  historyCardCategory: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  historyCardInfo: {
+    flexDirection: "row",
+    gap: 16,
+    marginBottom: 12,
+  },
+  infoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  infoText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  historyCardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "#FEF3C7",
+  },
+  statusBadgeSuccess: {
+    backgroundColor: "#D1FAE5",
+  },
+  statusBadgeFail: {
+    backgroundColor: "#FEE2E2",
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#D97706",
+  },
+  statusBadgeTextSuccess: {
+    color: "#059669",
+  },
+  statusBadgeTextFail: {
+    color: "#DC2626",
+  },
+  xpBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  xpBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#EF4444",
+  },
+  xpBadgeTextPositive: {
+    color: "#10B981",
   },
   emptyHistory: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyHistoryIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#F9FAFB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyHistoryTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 8,
   },
   emptyHistoryText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#9CA3AF",
-    marginTop: 12,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });

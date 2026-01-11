@@ -1,5 +1,7 @@
 # Orbis - Aplicativo de Rotina e Foco
 
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
+
 <!--![Orbis Logo](https://via.placeholder.com/150?text=Orbis) <!-- Substitua por um logo real se disponível -->
 
 Orbis é um aplicativo móvel projetado para ajudar usuários a criar, organizar e melhorar suas rotinas diárias de forma sustentável e adaptativa. Em vez de promover a produtividade exaustiva, o app prioriza o bem-estar, ajustando-se às necessidades individuais de sono, foco e tempo livre. Diferente de ferramentas tradicionais que impõem metas rígidas, o Orbis se adapta ao usuário, reconhecendo imprevistos da vida real e focando no progresso constante, não na perfeição.
@@ -52,8 +54,17 @@ O Orbis é construído sobre pilares tecnológicos e funcionais para uma experi�
 
 ## Tecnologias e Arquitetura
 
-- **Frontend**: React Native com Expo para cross-platform (iOS/Android).
-- **Backend**: Firebase (Auth para login, Firestore para dados em tempo real, Storage para customizações).
+<div align="center">
+
+![React Native](https://img.shields.io/badge/React%20Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white)
+![Firebase](https://img.shields.io/badge/Firebase-039BE5?style=for-the-badge&logo=Firebase&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+
+</div>
+
+- **Frontend**: ![React Native Badge](https://img.shields.io/badge/-React%20Native-61DAFB?logo=react&logoColor=white&style=flat) com ![Expo Badge](https://img.shields.io/badge/-Expo-000020?logo=expo&logoColor=white&style=flat) para cross-platform (iOS/Android).
+- **Backend**: ![Firebase Badge](https://img.shields.io/badge/-Firebase-039BE5?logo=firebase&logoColor=white&style=flat) (Auth para login, Firestore para dados em tempo real, Storage para customizações).
 - **Sensores**: Expo AV para áudio (sono), Sensors para acelerômetro.
 - **Gráficos**: react-native-chart-kit para hipnogramas e barras.
 - **Outras Dependências**: @react-native-community/datetimepicker para pickers, expo-vector-icons para ícones.

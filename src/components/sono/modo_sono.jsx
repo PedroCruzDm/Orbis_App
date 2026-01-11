@@ -7,6 +7,7 @@ import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
+import DevelopmentModal from '../common/development_modal.jsx';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -269,6 +270,8 @@ export default function ModoSonoMain() {
 					)}
 				</View>
 			</ScrollView>
+			{/* Aviso de desenvolvimento não bloqueante (apenas nesta tela) */}
+			<DevelopmentModal visible title="Em desenvolvimento" message="Em breve nas próximas atualizações" />
 		</SafeAreaView>
 	);
 }

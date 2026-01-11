@@ -1,9 +1,3 @@
-// Avaliador baseado em tempo de foco
-// Regras:
-// - Abaixo de 10min (600s): perde 5 XP
-// - Entre 10-20min (600s-1200s): neutro, 0 XP
-// - Acima de 20min (1200s): ganha XP positivo
-
 export const THRESHOLDS = {
   minSuccess: 1200, // 20 minutos - ganha XP
   minNeutral: 600,  // 10 minutos - não ganha nem perde
@@ -17,7 +11,7 @@ export function evaluateFocus(seconds) {
       status: 'Falha',
       message:
         'Foco Incompleto: O tempo é muito curto. Tente novamente!',
-      xp: -5,
+      xp: 0,
     };
   }
 
@@ -25,7 +19,7 @@ export function evaluateFocus(seconds) {
     return {
       status: 'Sucesso',
       message: 'Foco Profundo Concluído! Excelente trabalho.',
-      xp: +30,
+      xp: +10,
     };
   }
 
@@ -33,7 +27,7 @@ export function evaluateFocus(seconds) {
     status: 'Parcial',
     message:
       'Foco Parcial: Você se dedicou, mas tente estender o foco para ganhar XP.',
-    xp: 0,
+    xp: 3,
   };
 }
 

@@ -2,32 +2,50 @@ import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView, Pressable 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import theme from '../../theme';
 import LevelProgressBar from './level_progress_bar';
+import { getLevelInfo } from '../../utils/xp_system';
 
 const ProfileModal = ({ visible, onClose, user }) => {
-    const toolsData = [
-        { key: 'foco', label: 'Modo Foco', icon: 'target', level: 3 },
-        { key: 'sono', label: 'Modo Sono', icon: 'moon-waning-crescent', level: 2 },
-        { key: 'agenda', label: 'Agenda', icon: 'calendar', level: 4 },
-    ];
-
-    // Calcula o XP total a partir das ferramentas
-    const calculateTotalXp = () => {
-        let totalXp = 0;
-        if (user?.ferramentas) {
-            if (user.ferramentas.foco?.nivel?.xpTotal) {
-                totalXp += user.ferramentas.foco.nivel.xpTotal;
-            }
-            if (user.ferramentas.sono?.nivel?.xpTotal) {
-                totalXp += user.ferramentas.sono.nivel.xpTotal;
-            }
-            if (user.ferramentas.agenda?.nivel?.xpTotal) {
-                totalXp += user.ferramentas.agenda.nivel.xpTotal;
-            }
-        }
-        return Math.max(totalXp, 0); // evita XP negativo
+    const focusHistoryXp = () => {
+        const list = user?.ferramentas?.foco?.tarefas?.listaHistorico;
+        if (!Array.isArray(list)) return 0;
+        return list.reduce((acc, item) => {
+            const success = item?.statusTarefa === 'concluida' || item?.status === 'Sucesso';
+            if (!success) return acc;
+            const raw = Number(item?.xpGerado ?? item?.xp ?? 0);
+            const xp = Number.isFinite(raw) ? raw : 0;
+            return xp > 0 ? acc + xp : acc;
+        }, 0);
     };
 
-    const totalXp = calculateTotalXp();
+    const getToolXp = (key) => {
+        const ferramentas = user?.ferramentas || {};
+        if (key === 'foco') {
+            const stored = ferramentas.foco?.nivel?.xpTotal;
+            if (typeof stored === 'number' && Number.isFinite(stored)) return Math.max(stored, 0);
+            return Math.max(focusHistoryXp(), 0);
+        }
+        if (key === 'sono') {
+            const stored = ferramentas.sono?.nivel?.xpTotal;
+            return typeof stored === 'number' && Number.isFinite(stored) ? Math.max(stored, 0) : 0;
+        }
+        if (key === 'agenda') {
+            const stored = ferramentas.agenda?.nivel?.xpTotal;
+            return typeof stored === 'number' && Number.isFinite(stored) ? Math.max(stored, 0) : 0;
+        }
+        return 0;
+    };
+
+    const toolsData = [
+        { key: 'foco', label: 'Modo Foco', icon: 'target' },
+        { key: 'sono', label: 'Modo Sono', icon: 'moon-waning-crescent' },
+        { key: 'agenda', label: 'Agenda', icon: 'calendar' },
+    ].map((tool) => {
+        const xp = getToolXp(tool.key);
+        const levelInfo = getLevelInfo(xp);
+        return { ...tool, xp, level: levelInfo.level };
+    });
+
+    const totalXp = toolsData.reduce((acc, tool) => acc + (tool.xp || 0), 0);
 
     const renderLevelStars = (level) => {
         return (
