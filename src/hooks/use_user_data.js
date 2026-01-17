@@ -8,30 +8,37 @@ export function useUserData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      try {
-        if (authUser) {
-          // Usa getUser que aplica defaults automaticamente
-          const userData = await getUser(authUser.uid);
-          if (userData) {
-            setUser(userData);
-          } else {
-            setUser({ nome: authUser.displayName || 'Usuário' });
-          }
+  const loadUser = async (authUser) => {
+    try {
+      if (authUser) {
+        // Usa getUser que aplica defaults automaticamente
+        const userData = await getUser(authUser.uid);
+        if (userData) {
+          setUser(userData);
         } else {
-          setUser(null);
+          setUser({ nome: authUser.displayName || 'Usuário' });
         }
-      } catch (err) {
-        console.error('Erro ao buscar usuário:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      } else {
+        setUser(null);
       }
-    });
+    } catch (err) {
+      console.error('Erro ao buscar usuário:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, loadUser);
     return unsubscribe;
   }, []);
 
-  return { user, loading, error };
+  const refetch = async () => {
+    setLoading(true);
+    const authUser = auth.currentUser;
+    await loadUser(authUser);
+  };
+
+  return { user, loading, error, refetch };
 }

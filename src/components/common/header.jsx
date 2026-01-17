@@ -7,15 +7,17 @@ import { auth } from '../../services/firebase/firebase_config';
 import {signOut } from 'firebase/auth';
 import { useUserData } from '../../hooks/use_user_data';
 import ProfileModal from './profile_modal';
+import ConfigUserModal from './config_user';
 import { useTools } from '../../contexts/ToolsContext';
 
 const Header = () => {
-    const { user, loading } = useUserData();
+    const { user, loading, refetch } = useUserData();
     const { tools, updateTools, setOpenToolsModal } = useTools();
     const [showUserModal, setShowUserModal] = useState(false);
     const [showAccountMenu, setShowAccountMenu] = useState(false);
     const [showToolsModal, setShowToolsModal] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [showConfigModal, setShowConfigModal] = useState(false);
     const [authMode, setAuthMode] = useState('login');
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -298,8 +300,7 @@ const Header = () => {
 
                         <TouchableOpacity style={styles.menuItem} onPress={() => {
                             setShowAccountMenu(false);
-                            // Aqui você pode adicionar navegação para configurações
-                            Alert.alert('Configurações', 'Página de configurações em breve');
+                            setShowConfigModal(true);
                         }}>
                             <MaterialCommunityIcons name="cog" size={20} color={theme.colors.primary[600]} />
                             <Text style={styles.menuItemText}>Configurações</Text>
@@ -385,6 +386,14 @@ const Header = () => {
                 visible={showProfileModal} 
                 onClose={() => setShowProfileModal(false)} 
                 user={user}
+            />
+
+            {/* Modal de Configurações da Conta */}
+            <ConfigUserModal
+                visible={showConfigModal}
+                onClose={() => setShowConfigModal(false)}
+                user={user}
+                refetch={refetch}
             />
         </View>
     );

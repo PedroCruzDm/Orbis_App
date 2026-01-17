@@ -1,850 +1,434 @@
-import React, { useState, useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Modal, FlatList, Dimensions, } from "react-native";
+import React, { useState } from "react";
 import { 
-  agendaInitialFixedCommitments,
-  agendaInitialFlexibleTasks,
-  agendaInitialEssentialActivities,
-  agendaInitialFocusBlocks,
-} from '../../data/data';
-
-
-// ============================================================================
-// COMPONENTE PRINCIPAL
-// ============================================================================
-
-const { width } = Dimensions.get("window");
-//const isTablet = width >= 768;
+  View, 
+  Text, 
+  ScrollView, 
+  TouchableOpacity, 
+  TextInput, 
+  StyleSheet, 
+  Modal,
+  Platform,
+} from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import theme from "../../theme";
 
 export default function Agenda() {
-  // Estados principais
-  const [fixedCommitments, setFixedCommitments] = useState(agendaInitialFixedCommitments);
-  const [flexibleTasks, setFlexibleTasks] = useState(agendaInitialFlexibleTasks);
-  const [essentialActivities, setEssentialActivities] = useState(agendaInitialEssentialActivities);
-  const [focusBlocks, setFocusBlocks] = useState(agendaInitialFocusBlocks);
-
-  const [allEvents, setAllEvents] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
-
-  // Estados modais
-  const [showFixedModal, setShowFixedModal] = useState(false);
-  const [showFlexibleModal, setShowFlexibleModal] = useState(false);
-  const [showEssentialModal, setShowEssentialModal] = useState(false);
-  const [showReminderModal, setShowReminderModal] = useState(false);
-  const [showScheduleView, setShowScheduleView] = useState('calendar');
-
-  // Estados form
-  const [fixedForm, setFixedForm] = useState({
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [modalType, setModalType] = useState("fixed");
+  
+  // Estados para cada tipo de evento
+  const [fixedCommitments, setFixedCommitments] = useState([]);
+  const [flexibleTasks, setFlexibleTasks] = useState([]);
+  const [essentialActivities, setEssentialActivities] = useState([]);
+  const [focusBlocks, setFocusBlocks] = useState([]);
+  
+  const [form, setForm] = useState({
     title: "",
-    type: "Trabalho",
     startTime: "09:00",
     duration: "60",
-    recurrence: "Nenhuma",
-  });
-
-  const [flexibleForm, setFlexibleForm] = useState({
-    title: "",
-    duration: "60",
+    type: "Trabalho",
     priority: "MEDIUM",
+    recurrence: "Nenhuma",
     preferredSlot: "AFTERNOON",
   });
 
-  const [reminderForm, setReminderForm] = useState({
-    reminderTime: "30",
-    reminderUnit: "Minutos",
-    enabled: true,
-  });
-
-  // ============================================================================
-  // FUNÇÕES UTILITÁRIAS
-  // ============================================================================
-
-  const generateSchedule = () => {
-    // Combina todos os eventos e ordena cronologicamente
-    const combined = [
-      ...fixedCommitments.map((e) => ({
-        ...e,
-        type: "FIXED",
-        startMinutes: timeToMinutes(e.startTime),
-      })),
-      ...essentialActivities.map((e) => ({
-        ...e,
-        type: "ESSENTIAL",
-        startMinutes: timeToMinutes(e.timeSlot.split("-")[0]),
-      })),
-      ...focusBlocks.map((e) => ({
-        ...e,
-        type: "FOCUS",
-        startMinutes: timeToMinutes(e.startTime),
-      })),
-    ];
-
-    return combined.sort((a, b) => a.startMinutes - b.startMinutes);
-  };
-
-  const timeToMinutes = (timeStr) => {
-    const [h, m] = timeStr.split(":").map(Number);
-    return h * 60 + m;
-  };
-
-  const minutesToTime = (mins) => {
-    const h = String(Math.floor(mins / 60)).padStart(2, "0");
-    const m = String(mins % 60).padStart(2, "0");
-    return `${h}:${m}`;
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      Active: "#3B82F6",
-      Pending: "#FBBF24",
-      Executed: "#10B981",
-      NonExecuted: "#EF4444",
-      Inactive: "#9CA3AF",
-      Undated: "#A78BFA",
-    };
-    return colors[status] || "#6B7280";
-  };
-
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
+  const generateCalendar = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
 
-    return { daysInMonth, startingDayOfWeek };
-  };
-
-  const isSameDay = (date1, date2) => {
-    return (
-      date1.getDate() === date2.getDate() &&
-      date1.getMonth() === date2.getMonth() &&
-      date1.getFullYear() === date2.getFullYear()
-    );
-  };
-
-  const hasEventsOnDate = (date) => {
-    // Por enquanto, retorna true para datas com compromissos fixos
-    // Você pode expandir isso para verificar recorrência
-    return fixedCommitments.length > 0 || focusBlocks.length > 0;
-  };
-
-  const getEventsForSelectedDate = () => {
-    // Filtra eventos para o dia selecionado
-    // Por enquanto mostra todos, mas você pode adicionar lógica de data
-    return generateSchedule();
-  };
-
-  const monthNames = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-  ];
-
-  const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-  // ============================================================================
-  // HANDLERS
-  // ============================================================================
-
-  const handleAddFixedCommitment = () => {
-    if (fixedForm.title.trim()) {
-      setFixedCommitments([
-        ...fixedCommitments,
-        {
-          id: Date.now(),
-          ...fixedForm,
-          duration: parseInt(fixedForm.duration),
-          status: "Pending",
-        },
-      ]);
-      setFixedForm({
-        title: "",
-        type: "Trabalho",
-        startTime: "09:00",
-        duration: "60",
-        recurrence: "Nenhuma",
-      });
-      setShowFixedModal(false);
-    }
-  };
-
-  const handleAddFlexibleTask = () => {
-    if (flexibleForm.title.trim()) {
-      setFlexibleTasks([
-        ...flexibleTasks,
-        {
-          id: Date.now(),
-          ...flexibleForm,
-          estimatedDuration: parseInt(flexibleForm.duration),
-          status: "Undated",
-        },
-      ]);
-      setFlexibleForm({
-        title: "",
-        duration: "60",
-        priority: "MEDIUM",
-        preferredSlot: "AFTERNOON",
-      });
-      setShowFlexibleModal(false);
-    }
-  };
-
-  const handleDeleteFixed = (id) => {
-    setFixedCommitments(fixedCommitments.filter((e) => e.id !== id));
-  };
-
-  const handleDeleteFlexible = (id) => {
-    setFlexibleTasks(flexibleTasks.filter((e) => e.id !== id));
-  };
-
-  const handleDeleteFocusBlock = (id) => {
-    setFocusBlocks(focusBlocks.filter((e) => e.id !== id));
-  };
-
-  // ============================================================================
-  // COMPONENTES DE UI
-  // ============================================================================
-
-  const EventCard = ({ event, onDelete, isSmall = false }) => {
-    const statusColor = getStatusColor(event.status);
-    const typeLabel =
-      event.type === "FIXED"
-        ? "Compromisso"
-        : event.type === "ESSENTIAL"
-        ? "Essencial"
-        : "Foco";
-
-    return (
-      <View style={[styles.eventCard, isSmall && styles.eventCardSmall]}>
-        <View style={styles.eventHeader}>
-          <View
-            style={[
-              styles.eventDot,
-              { backgroundColor: statusColor },
-            ]}
-          />
-          <Text style={styles.eventTitle} numberOfLines={1}>
-            {event.title}
-          </Text>
-        </View>
-
-        <View style={styles.eventDetails}>
-          <Text style={styles.eventLabel}>{typeLabel}</Text>
-          {event.startTime && (
-            <Text style={styles.eventTime}>
-              {event.startTime} • {event.duration}min
-            </Text>
-          )}
-          {event.priority && (
-            <Text
-              style={[
-                styles.eventPriority,
-                event.priority === "HIGH"
-                  ? styles.priorityHigh
-                  : event.priority === "MEDIUM"
-                  ? styles.priorityMedium
-                  : styles.priorityLow,
-              ]}
-            >
-              {event.priority}
-            </Text>
-          )}
-          <View style={styles.eventStatus}>
-            <Text style={[styles.statusBadge, { color: statusColor }]}>
-              {event.status}
-            </Text>
-          </View>
-        </View>
-
-        {onDelete && (
-          <TouchableOpacity onPress={() => onDelete(event.id)}>
-            <Text style={styles.deleteBtn}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-
-  const CalendarView = () => {
-    const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentMonth);
-    const today = new Date();
     const days = [];
-
-    // Adiciona espaços vazios antes do primeiro dia
+    
     for (let i = 0; i < startingDayOfWeek; i++) {
-      days.push(<View key={`empty-${i}`} style={styles.calendarDay} />);
+      days.push(null);
     }
-
-    // Adiciona os dias do mês
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-      const isToday = isSameDay(date, today);
-      const isSelected = isSameDay(date, selectedDate);
-      const hasEvents = hasEventsOnDate(date);
-
-      days.push(
-        <TouchableOpacity
-          key={day}
-          style={[
-            styles.calendarDay,
-            isToday && styles.calendarDayToday,
-            isSelected && styles.calendarDaySelected,
-          ]}
-          onPress={() => setSelectedDate(date)}
-        >
-          <Text
-            style={[
-              styles.calendarDayText,
-              isToday && styles.calendarDayTextToday,
-              isSelected && styles.calendarDayTextSelected,
-            ]}
-          >
-            {day}
-          </Text>
-          {hasEvents && <View style={styles.eventIndicator} />}
-        </TouchableOpacity>
-      );
+    
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i);
     }
-
-    return (
-      <View style={styles.calendarContainer}>
-        {/* Header do Calendário */}
-        <View style={styles.calendarHeader}>
-          <TouchableOpacity
-            onPress={() => {
-              const newMonth = new Date(currentMonth);
-              newMonth.setMonth(currentMonth.getMonth() - 1);
-              setCurrentMonth(newMonth);
-            }}
-            style={styles.calendarArrow}
-          >
-            <Text style={styles.calendarArrowText}>‹</Text>
-          </TouchableOpacity>
-          <Text style={styles.calendarMonthYear}>
-            {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-          </Text>
-          <TouchableOpacity
-            onPress={() => {
-              const newMonth = new Date(currentMonth);
-              newMonth.setMonth(currentMonth.getMonth() + 1);
-              setCurrentMonth(newMonth);
-            }}
-            style={styles.calendarArrow}
-          >
-            <Text style={styles.calendarArrowText}>›</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Dias da Semana */}
-        <View style={styles.calendarWeekDays}>
-          {weekDays.map((day) => (
-            <View key={day} style={styles.calendarWeekDay}>
-              <Text style={styles.calendarWeekDayText}>{day}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Grid de Dias */}
-        <View style={styles.calendarGrid}>{days}</View>
-
-        {/* Eventos do Dia Selecionado */}
-        <View style={styles.selectedDateEvents}>
-          <Text style={styles.selectedDateTitle}>
-            Eventos - {selectedDate.getDate()} de {monthNames[selectedDate.getMonth()]}
-          </Text>
-          <ScrollView style={styles.eventsScrollView}>
-            {getEventsForSelectedDate().length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>Nenhum evento neste dia</Text>
-              </View>
-            ) : (
-              getEventsForSelectedDate().map((event, idx) => (
-                <View key={`${event.type}-${event.id}`} style={styles.timelineItem}>
-                  <Text style={styles.timelineTime}>{event.startTime}</Text>
-                  <View style={styles.timelineContent}>
-                    <EventCard event={event} isSmall />
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    );
+    
+    return days;
   };
 
-  const TimelineView = () => {
-    const schedule = generateSchedule();
-
-    return (
-      <ScrollView style={styles.timelineContainer}>
-        {schedule.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Nenhum evento agendado</Text>
-          </View>
-        ) : (
-          schedule.map((event, idx) => (
-            <View key={`${event.type}-${event.id}`} style={styles.timelineItem}>
-              <Text style={styles.timelineTime}>{event.startTime}</Text>
-              <View style={styles.timelineContent}>
-                <EventCard event={event} isSmall />
-              </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
-    );
+  const isToday = (day) => {
+    const today = new Date();
+    return day === today.getDate() && 
+           currentMonth.getMonth() === today.getMonth() &&
+           currentMonth.getFullYear() === today.getFullYear();
   };
 
-  const EventListTab = ({ title, events, onDelete }) => (
-    <View style={styles.tabContent}>
-      <View style={styles.tabHeader}>
-        <Text style={styles.tabTitle}>{title}</Text>
-        <Text style={styles.tabCount}>{events.length}</Text>
-      </View>
+  const isSelected = (day) => {
+    return day === selectedDate.getDate() &&
+           currentMonth.getMonth() === selectedDate.getMonth() &&
+           currentMonth.getFullYear() === selectedDate.getFullYear();
+  };
 
-      {events.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Nenhum evento</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={events}
-          keyExtractor={(item) => `${item.id}`}
-          renderItem={({ item }) => (
-            <EventCard event={item} onDelete={onDelete} />
-          )}
-          scrollEnabled={false}
-        />
-      )}
-    </View>
-  );
+  const handlePreviousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
 
-  const schedule = useMemo(() => generateSchedule(), [
-    fixedCommitments,
-    essentialActivities,
-    focusBlocks,
-  ]);
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
 
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  const handleDayPress = (day) => {
+    if (day) {
+      setSelectedDate(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day));
+    }
+  };
+
+  const handleAddEvent = () => {
+    if (!form.title.trim()) return;
+    
+    const newEvent = {
+      id: Date.now(),
+      ...form,
+      date: selectedDate.toISOString().split("T")[0],
+      status: "Pending",
+    };
+    
+    switch(modalType) {
+      case "fixed":
+        setFixedCommitments([...fixedCommitments, newEvent]);
+        break;
+      case "flexible":
+        setFlexibleTasks([...flexibleTasks, newEvent]);
+        break;
+      case "essential":
+        setEssentialActivities([...essentialActivities, newEvent]);
+        break;
+      case "focus":
+        setFocusBlocks([...focusBlocks, newEvent]);
+        break;
+    }
+    
+    setForm({ title: "", startTime: "09:00", duration: "60", type: "Trabalho", priority: "MEDIUM", recurrence: "Nenhuma", preferredSlot: "AFTERNOON" });
+    setShowEventModal(false);
+  };
+
+  const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
+                      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  
+  const dayNames = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+  const allEvents = [
+    ...fixedCommitments.map(e => ({ ...e, eventType: "fixed" })),
+    ...flexibleTasks.map(e => ({ ...e, eventType: "flexible" })),
+    ...essentialActivities.map(e => ({ ...e, eventType: "essential" })),
+    ...focusBlocks.map(e => ({ ...e, eventType: "focus" })),
+  ];
+  
+  const todayEvents = allEvents
+    .filter(e => e.date === selectedDate.toISOString().split("T")[0])
+    .sort((a, b) => (a.startTime || "00:00").localeCompare(b.startTime || "00:00"));
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Agenda Inteligente</Text>
-        <View style={styles.headerStats}>
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>{fixedCommitments.length}</Text>
-            <Text style={styles.statLabel}>Fixos</Text>
+        <Text style={styles.headerTitle}>Agenda</Text>
+        <TouchableOpacity style={styles.headerButton}>
+          <MaterialCommunityIcons name="cog-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Botões de Ferramentas */}
+        <View style={styles.toolsGroup}>
+          <TouchableOpacity 
+            style={[styles.toolBtn, { backgroundColor: "#3B82F6" }]} 
+            onPress={() => { setModalType("fixed"); setShowEventModal(true); }}
+          >
+            <MaterialCommunityIcons name="calendar-check" size={20} color="#FFFFFF" />
+            <Text style={styles.toolBtnText}>Fixo</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.toolBtn, { backgroundColor: "#8B5CF6" }]} 
+            onPress={() => { setModalType("flexible"); setShowEventModal(true); }}
+          >
+            <MaterialCommunityIcons name="calendar-clock" size={20} color="#FFFFFF" />
+            <Text style={styles.toolBtnText}>Flexível</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.toolBtn, { backgroundColor: "#10B981" }]} 
+            onPress={() => { setModalType("essential"); setShowEventModal(true); }}
+          >
+            <MaterialCommunityIcons name="star" size={20} color="#FFFFFF" />
+            <Text style={styles.toolBtnText}>Essencial</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.toolBtn, { backgroundColor: "#F59E0B" }]} 
+            onPress={() => { setModalType("focus"); setShowEventModal(true); }}
+          >
+            <MaterialCommunityIcons name="target" size={20} color="#FFFFFF" />
+            <Text style={styles.toolBtnText}>Foco</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.calendarCard}>
+          <View style={styles.monthNav}>
+            <TouchableOpacity onPress={handlePreviousMonth} style={styles.navButton}>
+              <MaterialCommunityIcons name="chevron-left" size={24} color={theme.colors.primary[600]} />
+            </TouchableOpacity>
+            
+            <Text style={styles.monthText}>
+              {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+            </Text>
+            
+            <TouchableOpacity onPress={handleNextMonth} style={styles.navButton}>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.primary[600]} />
+            </TouchableOpacity>
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>{flexibleTasks.length}</Text>
-            <Text style={styles.statLabel}>Flexíveis</Text>
+
+          <View style={styles.weekHeader}>
+            {dayNames.map((day, index) => (
+              <View key={index} style={styles.weekDay}>
+                <Text style={styles.weekDayText}>{day}</Text>
+              </View>
+            ))}
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statNumber}>{focusBlocks.length}</Text>
-            <Text style={styles.statLabel}>Foco</Text>
+
+          <View style={styles.daysGrid}>
+            {generateCalendar().map((day, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.dayCell,
+                  day === null && styles.dayCellEmpty,
+                  isSelected(day) && styles.dayCellSelected,
+                ]}
+                onPress={() => handleDayPress(day)}
+                disabled={day === null}
+              >
+                {day !== null && (
+                  <>
+                    <Text style={[
+                      styles.dayText,
+                      isToday(day) && styles.dayTextToday,
+                      isSelected(day) && styles.dayTextSelected,
+                    ]}>
+                      {day}
+                    </Text>
+                    {allEvents.some(e => {
+                      const eventDate = new Date(e.date);
+                      return eventDate.getDate() === day && 
+                             eventDate.getMonth() === currentMonth.getMonth() &&
+                             eventDate.getFullYear() === currentMonth.getFullYear();
+                    }) && !isSelected(day) && (
+                      <View style={styles.eventIndicator} />
+                    )}
+                  </>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
-      </View>
 
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            showScheduleView === 'calendar' && styles.tabButtonActive,
-          ]}
-          onPress={() => setShowScheduleView('calendar')}
-        >
-          <Text
-            style={[
-              styles.tabButtonText,
-              showScheduleView === 'calendar' && styles.tabButtonTextActive,
-            ]}
-          >
-            📅 Calendário
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            showScheduleView === 'timeline' && styles.tabButtonActive,
-          ]}
-          onPress={() => setShowScheduleView('timeline')}
-        >
-          <Text
-            style={[
-              styles.tabButtonText,
-              showScheduleView === 'timeline' && styles.tabButtonTextActive,
-            ]}
-          >
-            ⏰ Cronograma
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            showScheduleView === 'events' && styles.tabButtonActive,
-          ]}
-          onPress={() => setShowScheduleView('events')}
-        >
-          <Text
-            style={[
-              styles.tabButtonText,
-              showScheduleView === 'events' && styles.tabButtonTextActive,
-            ]}
-          >
-            📋 Eventos
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.content}>
-        {showScheduleView === 'calendar' ? (
-          <CalendarView />
-        ) : showScheduleView === 'timeline' ? (
-          <TimelineView />
-        ) : (
-          <View>
-            <EventListTab
-              title="Compromissos Fixos"
-              events={fixedCommitments}
-              onDelete={handleDeleteFixed}
-            />
-            <EventListTab
-              title="Tarefas Flexíveis"
-              events={flexibleTasks}
-              onDelete={handleDeleteFlexible}
-            />
-            <EventListTab
-              title="Atividades Essenciais"
-              events={essentialActivities}
-            />
-            <EventListTab
-              title="Blocos de Foco"
-              events={focusBlocks}
-              onDelete={handleDeleteFocusBlock}
-            />
+        <View style={styles.eventsSection}>
+          <View style={styles.eventsSectionHeader}>
+            <Text style={styles.eventsSectionTitle}>
+              {selectedDate.getDate()} de {monthNames[selectedDate.getMonth()]}
+            </Text>
+            <View style={styles.eventsCount}>
+              <Text style={styles.eventsCountText}>{todayEvents.length}</Text>
+            </View>
           </View>
-        )}
+
+          {todayEvents.length > 0 ? (
+            <View style={styles.eventsGrid}>
+              {todayEvents.map((event) => (
+                <View key={event.id} style={styles.eventCard}>
+                  <View style={styles.eventTime}>
+                    <Text style={styles.eventTimeText}>{event.startTime || "--:--"}</Text>
+                  </View>
+                  <View style={styles.eventDetails}>
+                    <Text style={styles.eventTitle}>{event.title}</Text>
+                    <View style={styles.eventMeta}>
+                      <MaterialCommunityIcons name="clock-outline" size={12} color="#9CA3AF" />
+                      <Text style={styles.eventDuration}>{event.duration}min</Text>
+                      <View style={[styles.categoryBadge, { backgroundColor: getEventTypeColor(event.eventType) + "20" }]}>        
+                        <Text style={[styles.categoryBadgeText, { color: getEventTypeColor(event.eventType) }]}>
+                          {getEventTypeLabel(event.eventType)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons name="calendar-blank-outline" size={48} color="#D1D5DB" />
+              <Text style={styles.emptyText}>Nenhum evento</Text>
+              <Text style={styles.emptySubtext}>Use as ferramentas abaixo</Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
-      {/* Botões de Ação Flutuante */}
-      <View style={styles.fab}>
-        <TouchableOpacity
-          style={[styles.fabButton, styles.fabFixed]}
-          onPress={() => setShowFixedModal(true)}
-        >
-          <Text style={styles.fabIcon}>📅</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.fabButton, styles.fabFlexible]}
-          onPress={() => setShowFlexibleModal(true)}
-        >
-          <Text style={styles.fabIcon}>✓</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.fabButton, styles.fabFocus]}
-          onPress={() => setShowReminderModal(true)}
-        >
-          <Text style={styles.fabIcon}>🔔</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* MODAIS */}
-
-      {/* Modal de Compromisso Fixo */}
       <Modal
-        visible={showFixedModal}
+        visible={showEventModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowFixedModal(false)}
+        onRequestClose={() => setShowEventModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Novo Compromisso Fixo</Text>
-              <TouchableOpacity onPress={() => setShowFixedModal(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
-              </TouchableOpacity>
-            </View>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowEventModal(false)}
+          />
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{getModalTitle(modalType)}</Text>
+                <TouchableOpacity onPress={() => setShowEventModal(false)}>
+                  <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
 
-            <ScrollView style={styles.modalBody}>
-              <Text style={styles.fieldLabel}>Nome do Evento *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Trabalho, Reunião"
-                value={fixedForm.title}
-                onChangeText={(text) =>
-                  setFixedForm({ ...fixedForm, title: text })
-                }
-              />
+              <View style={styles.modalBody}>
+                <Text style={styles.label}>Título</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: Reunião de equipe"
+                  placeholderTextColor="#9CA3AF"
+                  value={form.title}
+                  onChangeText={(text) => setForm({ ...form, title: text })}
+                />
 
-              <Text style={styles.fieldLabel}>Tipo de Evento *</Text>
-              <View style={styles.selectGroup}>
-                {["Trabalho", "Escola/Estudo Fixo", "Compromisso Pessoal"].map(
-                  (type) => (
+                {(modalType === "fixed" || modalType === "focus") && (
+                  <View style={styles.row}>
+                    <View style={styles.halfField}>
+                      <Text style={styles.label}>Horário</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="09:00"
+                        placeholderTextColor="#9CA3AF"
+                        value={form.startTime}
+                        onChangeText={(text) => setForm({ ...form, startTime: text })}
+                      />
+                    </View>
+                    <View style={styles.halfField}>
+                      <Text style={styles.label}>Duração (min)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="60"
+                        placeholderTextColor="#9CA3AF"
+                        keyboardType="number-pad"
+                        value={form.duration}
+                        onChangeText={(text) => setForm({ ...form, duration: text })}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {modalType === "flexible" && (
+                  <>
+                    <Text style={styles.label}>Duração Estimada (min)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="60"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="number-pad"
+                      value={form.duration}
+                      onChangeText={(text) => setForm({ ...form, duration: text })}
+                    />
+                    
+                    <Text style={styles.label}>Prioridade</Text>
+                    <View style={styles.categoryRow}>
+                      {["LOW", "MEDIUM", "HIGH"].map((p) => (
+                        <TouchableOpacity
+                          key={p}
+                          style={[styles.categoryButton, form.priority === p && styles.categoryButtonActive]}
+                          onPress={() => setForm({ ...form, priority: p })}
+                        >
+                          <Text style={[styles.categoryButtonText, form.priority === p && styles.categoryButtonTextActive]}>
+                            {p === "LOW" ? "Baixa" : p === "MEDIUM" ? "Média" : "Alta"}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    
+                    <Text style={styles.label}>Período Preferido</Text>
+                    <View style={styles.categoryRow}>
+                      {["MORNING", "AFTERNOON", "EVENING"].map((slot) => (
+                        <TouchableOpacity
+                          key={slot}
+                          style={[styles.categoryButton, form.preferredSlot === slot && styles.categoryButtonActive]}
+                          onPress={() => setForm({ ...form, preferredSlot: slot })}
+                        >
+                          <Text style={[styles.categoryButtonText, form.preferredSlot === slot && styles.categoryButtonTextActive]}>
+                            {slot === "MORNING" ? "Manhã" : slot === "AFTERNOON" ? "Tarde" : "Noite"}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {modalType === "essential" && (
+                  <>
+                    <Text style={styles.label}>Duração (min)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="30"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="number-pad"
+                      value={form.duration}
+                      onChangeText={(text) => setForm({ ...form, duration: text })}
+                    />
+                  </>
+                )}
+
+                <Text style={styles.label}>Tipo</Text>
+                <View style={styles.categoryRow}>
+                  {["Trabalho", "Pessoal", "Saúde", "Estudo"].map((cat) => (
                     <TouchableOpacity
-                      key={type}
-                      style={[
-                        styles.selectButton,
-                        fixedForm.type === type && styles.selectButtonActive,
-                      ]}
-                      onPress={() =>
-                        setFixedForm({ ...fixedForm, type })
-                      }
+                      key={cat}
+                      style={[styles.categoryButton, form.type === cat && styles.categoryButtonActive]}
+                      onPress={() => setForm({ ...form, type: cat })}
                     >
-                      <Text
-                        style={[
-                          styles.selectButtonText,
-                          fixedForm.type === type &&
-                            styles.selectButtonTextActive,
-                        ]}
-                      >
-                        {type}
+                      <Text style={[styles.categoryButtonText, form.type === cat && styles.categoryButtonTextActive]}>
+                        {cat}
                       </Text>
                     </TouchableOpacity>
-                  )
+                  ))}
+                </View>
+
+                {modalType === "fixed" && (
+                  <>
+                    <Text style={styles.label}>Recorrência</Text>
+                    <View style={styles.categoryRow}>
+                      {["Nenhuma", "Diária", "Semanal", "Mensal"].map((rec) => (
+                        <TouchableOpacity
+                          key={rec}
+                          style={[styles.categoryButton, form.recurrence === rec && styles.categoryButtonActive]}
+                          onPress={() => setForm({ ...form, recurrence: rec })}
+                        >
+                          <Text style={[styles.categoryButtonText, form.recurrence === rec && styles.categoryButtonTextActive]}>
+                            {rec}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
                 )}
-              </View>
 
-              <Text style={styles.fieldLabel}>Hora de Início *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="HH:MM"
-                value={fixedForm.startTime}
-                onChangeText={(text) =>
-                  setFixedForm({ ...fixedForm, startTime: text })
-                }
-              />
-
-              <Text style={styles.fieldLabel}>Duração (minutos) *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="60"
-                value={fixedForm.duration}
-                keyboardType="numeric"
-                onChangeText={(text) =>
-                  setFixedForm({ ...fixedForm, duration: text })
-                }
-              />
-
-              <Text style={styles.fieldLabel}>Repetição</Text>
-              <View style={styles.selectGroup}>
-                {["Diário", "Semanal", "Mensal", "Nenhuma"].map((rec) => (
-                  <TouchableOpacity
-                    key={rec}
-                    style={[
-                      styles.selectButton,
-                      fixedForm.recurrence === rec &&
-                        styles.selectButtonActive,
-                    ]}
-                    onPress={() =>
-                      setFixedForm({ ...fixedForm, recurrence: rec })
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.selectButtonText,
-                        fixedForm.recurrence === rec &&
-                          styles.selectButtonTextActive,
-                      ]}
-                    >
-                      {rec}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                <TouchableOpacity style={styles.saveButton} onPress={handleAddEvent}>
+                  <Text style={styles.saveButtonText}>Adicionar</Text>
+                </TouchableOpacity>
               </View>
             </ScrollView>
-
-            <TouchableOpacity
-              style={styles.submitBtn}
-              onPress={handleAddFixedCommitment}
-            >
-              <Text style={styles.submitBtnText}>Adicionar Evento</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal de Tarefa Flexível */}
-      <Modal
-        visible={showFlexibleModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowFlexibleModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nova Tarefa Flexível</Text>
-              <TouchableOpacity onPress={() => setShowFlexibleModal(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <Text style={styles.fieldLabel}>Nome da Tarefa *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: Estudar, Projeto Pessoal"
-                value={flexibleForm.title}
-                onChangeText={(text) =>
-                  setFlexibleForm({ ...flexibleForm, title: text })
-                }
-              />
-
-              <Text style={styles.fieldLabel}>Duração Estimada (min) *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="90"
-                value={flexibleForm.duration}
-                keyboardType="numeric"
-                onChangeText={(text) =>
-                  setFlexibleForm({ ...flexibleForm, duration: text })
-                }
-              />
-
-              <Text style={styles.fieldLabel}>Prioridade</Text>
-              <View style={styles.selectGroup}>
-                {["HIGH", "MEDIUM", "LOW"].map((pri) => (
-                  <TouchableOpacity
-                    key={pri}
-                    style={[
-                      styles.selectButton,
-                      flexibleForm.priority === pri &&
-                        styles.selectButtonActive,
-                    ]}
-                    onPress={() =>
-                      setFlexibleForm({ ...flexibleForm, priority: pri })
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.selectButtonText,
-                        flexibleForm.priority === pri &&
-                          styles.selectButtonTextActive,
-                      ]}
-                    >
-                      {pri}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.fieldLabel}>Horário Preferido</Text>
-              <View style={styles.selectGroup}>
-                {["MORNING", "AFTERNOON", "EVENING"].map((slot) => (
-                  <TouchableOpacity
-                    key={slot}
-                    style={[
-                      styles.selectButton,
-                      flexibleForm.preferredSlot === slot &&
-                        styles.selectButtonActive,
-                    ]}
-                    onPress={() =>
-                      setFlexibleForm({
-                        ...flexibleForm,
-                        preferredSlot: slot,
-                      })
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.selectButtonText,
-                        flexibleForm.preferredSlot === slot &&
-                          styles.selectButtonTextActive,
-                      ]}
-                    >
-                      {slot === "MORNING"
-                        ? "Manhã"
-                        : slot === "AFTERNOON"
-                        ? "Tarde"
-                        : "Noite"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.submitBtn}
-              onPress={handleAddFlexibleTask}
-            >
-              <Text style={styles.submitBtnText}>Adicionar Tarefa</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal de Lembretes */}
-      <Modal
-        visible={showReminderModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowReminderModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Configurar Lembretes</Text>
-              <TouchableOpacity onPress={() => setShowReminderModal(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <Text style={styles.fieldLabel}>Tempo de Antecedência</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="30"
-                value={reminderForm.reminderTime}
-                keyboardType="numeric"
-                onChangeText={(text) =>
-                  setReminderForm({ ...reminderForm, reminderTime: text })
-                }
-              />
-
-              <Text style={styles.fieldLabel}>Unidade</Text>
-              <View style={styles.selectGroup}>
-                {["Minutos", "Horas", "Dias"].map((unit) => (
-                  <TouchableOpacity
-                    key={unit}
-                    style={[
-                      styles.selectButton,
-                      reminderForm.reminderUnit === unit &&
-                        styles.selectButtonActive,
-                    ]}
-                    onPress={() =>
-                      setReminderForm({ ...reminderForm, reminderUnit: unit })
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.selectButtonText,
-                        reminderForm.reminderUnit === unit &&
-                          styles.selectButtonTextActive,
-                      ]}
-                    >
-                      {unit}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.reminderNote}>
-                <Text style={styles.reminderNoteText}>
-                  ⓘ Mínimo: 30 minutos | Máximo: 4 dias
-                </Text>
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity style={styles.submitBtn}>
-              <Text style={styles.submitBtnText}>Salvar Lembrete</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -852,461 +436,370 @@ export default function Agenda() {
   );
 }
 
-// ============================================================================
-// ESTILOS (mapeados a partir do CSS fornecido)
-// ============================================================================
+const getEventTypeColor = (eventType) => {
+  const colors = {
+    fixed: "#3B82F6",
+    flexible: "#8B5CF6",
+    essential: "#10B981",
+    focus: "#F59E0B",
+  };
+  return colors[eventType] || "#6B7280";
+};
+
+const getEventTypeLabel = (eventType) => {
+  const labels = {
+    fixed: "Fixo",
+    flexible: "Flexível",
+    essential: "Essencial",
+    focus: "Foco",
+  };
+  return labels[eventType] || eventType;
+};
+
+const getModalTitle = (modalType) => {
+  const titles = {
+    fixed: "Compromisso Fixo",
+    flexible: "Tarefa Flexível",
+    essential: "Atividade Essencial",
+    focus: "Bloco de Foco",
+  };
+  return titles[modalType] || "Novo Evento";
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FDFBF8",
+    backgroundColor: "#F3F4F6",
   },
-
-  // Header
   header: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    backgroundColor: theme.colors.primary[600],
+    paddingTop: Platform.OS === "ios" ? 50 : 35,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 12,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
-  headerStats: {
-    flexDirection: "row",
-    gap: 16,
+  headerButton: {
+    padding: 8,
   },
-  stat: {
-    alignItems: "center",
-    flex: 1,
-    paddingVertical: 8,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#A7727D",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-  },
-
-  // Tab Bar
-  tabBar: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabButtonActive: {
-    borderBottomColor: "#A7727D",
-  },
-  tabButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6B7280",
-  },
-  tabButtonTextActive: {
-    color: "#A7727D",
-  },
-
-  // Content
   content: {
     flex: 1,
   },
-
-  // Timeline
-  timelineContainer: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  timelineItem: {
-    flexDirection: "row",
-    marginBottom: 12,
-    gap: 12,
-  },
-  timelineTime: {
-    fontWeight: "700",
-    color: "#111827",
-    fontSize: 13,
-    minWidth: 50,
-    paddingTop: 8,
-  },
-  timelineContent: {
-    flex: 1,
-  },
-
-  // Event Card
-  eventCard: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: "#A7727D",
-    marginBottom: 10,
-  },
-  eventCardSmall: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-  },
-  eventHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-  eventDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  eventTitle: {
-    fontWeight: "700",
-    color: "#111827",
-    fontSize: 14,
-    flex: 1,
-  },
-  eventDetails: {
-    gap: 4,
-  },
-  eventLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#9CA3AF",
-    textTransform: "uppercase",
-  },
-  eventTime: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  eventPriority: {
-    fontSize: 11,
-    fontWeight: "700",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: "flex-start",
-  },
-  priorityHigh: {
-    backgroundColor: "#FEE2E2",
-    color: "#DC2626",
-  },
-  priorityMedium: {
-    backgroundColor: "#FEF3C7",
-    color: "#D97706",
-  },
-  priorityLow: {
-    backgroundColor: "#DBEAFE",
-    color: "#2563EB",
-  },
-  eventStatus: {
-    marginTop: 6,
-  },
-  statusBadge: {
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  deleteBtn: {
-    color: "#EF4444",
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 8,
-  },
-
-  // Calendário
-  calendarContainer: {
-    backgroundColor: '#fff',
-    margin: 12,
-    borderRadius: 12,
+  
+  calendarCard: {
+    backgroundColor: "#FFFFFF",
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
     padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 16,
   },
-  calendarArrow: {
-    padding: 8,
+  navButton: {
+    padding: 4,
   },
-  calendarArrowText: {
-    fontSize: 28,
-    color: '#A7727D',
-    fontWeight: 'bold',
+  monthText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F2937",
   },
-  calendarMonthYear: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  calendarWeekDays: {
-    flexDirection: 'row',
+  weekHeader: {
+    flexDirection: "row",
     marginBottom: 8,
   },
-  calendarWeekDay: {
+  weekDay: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
+    paddingVertical: 8,
   },
-  calendarWeekDayText: {
+  weekDayText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: "600",
+    color: "#9CA3AF",
   },
-  calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  daysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
   },
-  calendarDay: {
-    width: '14.28%',
+  dayCell: {
+    width: "14.28%",
     aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 4,
-    position: 'relative',
-  },
-  calendarDayToday: {
-    backgroundColor: '#FEF3C7',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 8,
+    marginBottom: 4,
+    position: "relative",
   },
-  calendarDaySelected: {
-    backgroundColor: '#A7727D',
-    borderRadius: 8,
+  dayCellEmpty: {
+    backgroundColor: "transparent",
   },
-  calendarDayText: {
+  dayCellSelected: {
+    backgroundColor: theme.colors.primary[600],
+  },
+  dayText: {
     fontSize: 14,
-    color: '#111827',
-    fontWeight: '500',
+    fontWeight: "500",
+    color: "#374151",
   },
-  calendarDayTextToday: {
-    color: '#D97706',
-    fontWeight: '700',
+  dayTextToday: {
+    color: theme.colors.primary[600],
+    fontWeight: "700",
   },
-  calendarDayTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+  dayTextSelected: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   eventIndicator: {
-    position: 'absolute',
-    bottom: 4,
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E88D67',
-  },
-  selectedDateEvents: {
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    paddingTop: 16,
-  },
-  selectedDateTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  eventsScrollView: {
-    maxHeight: 300,
+    backgroundColor: theme.colors.primary[400],
+    position: "absolute",
+    bottom: 4,
   },
 
-  // Tab Content
-  tabContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+  eventsSection: {
+    margin: 16,
+    marginTop: 20,
+    marginBottom: 20,
   },
-  tabHeader: {
+  eventsSectionHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 12,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
   },
-  tabTitle: {
-    fontSize: 16,
+  eventsSectionTitle: {
+    fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: "#1F2937",
   },
-  tabCount: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#FFFFFF",
-    backgroundColor: "#A7727D",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  eventsCount: {
+    backgroundColor: theme.colors.primary[100],
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 12,
   },
-
-  // Empty State
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 32,
+  eventsCountText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.colors.primary[700],
   },
-  emptyText: {
-    fontSize: 14,
-    color: "#9CA3AF",
-  },
-
-  // FAB
-  fab: {
-    position: "absolute",
-    bottom: 20,
-    right: 16,
-    flexDirection: "column",
+  eventsGrid: {
     gap: 12,
   },
-  fabButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
+  eventCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: "row",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  fabFixed: {
-    backgroundColor: "#A7727D",
+  eventTime: {
+    marginRight: 16,
+    minWidth: 50,
   },
-  fabFlexible: {
-    backgroundColor: "#E88D67",
+  eventTimeText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.colors.primary[600],
   },
-  fabFocus: {
-    backgroundColor: "#0EA5A4",
+  eventDetails: {
+    flex: 1,
   },
-  fabIcon: {
-    fontSize: 24,
+  eventTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 6,
+  },
+  eventMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  eventDuration: {
+    fontSize: 12,
+    color: "#9CA3AF",
+  },
+  categoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 4,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 48,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: "#D1D5DB",
+    marginTop: 4,
   },
 
-  // Modal
+  toolsGroup: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  toolBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  toolBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 16,
+  modalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: "90%",
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#D1D5DB",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 8,
   },
   modalHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#F3F4F6",
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
-  },
-  closeBtn: {
-    fontSize: 24,
-    color: "#6B7280",
-    fontWeight: "600",
+    color: "#1F2937",
   },
   modalBody: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    padding: 20,
   },
-
-  // Form
-  fieldLabel: {
+  label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#111827",
+    color: "#374151",
     marginBottom: 8,
   },
   input: {
+    backgroundColor: "#F9FAFB",
     borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#111827",
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 14 : 12,
+    fontSize: 15,
+    color: "#1F2937",
     marginBottom: 16,
   },
-  selectGroup: {
+  row: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  halfField: {
+    flex: 1,
+  },
+  categoryRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     marginBottom: 16,
   },
-  selectButton: {
-    flexGrow: 1,
-    minWidth: "30%",
-    paddingHorizontal: 12,
+  categoryButton: {
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: "#E5E7EB",
     backgroundColor: "#F9FAFB",
-    alignItems: "center",
   },
-  selectButtonActive: {
-    backgroundColor: "#A7727D",
-    borderColor: "#A7727D",
+  categoryButtonActive: {
+    backgroundColor: theme.colors.primary[600],
+    borderColor: theme.colors.primary[600],
   },
-  selectButtonText: {
+  categoryButtonText: {
     fontSize: 13,
     fontWeight: "600",
     color: "#6B7280",
   },
-  selectButtonTextActive: {
+  categoryButtonTextActive: {
     color: "#FFFFFF",
   },
-  reminderNote: {
-    backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  reminderNoteText: {
-    fontSize: 12,
-    color: "#0369A1",
-  },
-
-  submitBtn: {
-    backgroundColor: "#A7727D",
-    borderRadius: 10,
-    paddingVertical: 14,
-    marginHorizontal: 16,
-    marginVertical: 16,
+  saveButton: {
+    backgroundColor: theme.colors.primary[600],
+    borderRadius: 12,
+    paddingVertical: 16,
     alignItems: "center",
+    marginTop: 8,
   },
-  submitBtnText: {
-    color: "#FFFFFF",
+  saveButtonText: {
+    fontSize: 16,
     fontWeight: "700",
-    fontSize: 14,
+    color: "#FFFFFF",
   },
 });

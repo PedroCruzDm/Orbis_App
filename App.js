@@ -34,7 +34,7 @@ function AppContent() {
     const ordered = [];
 
     if (!hasAnyTool) {
-      ordered.push('dashboard', 'adicionar', 'perfil');
+      ordered.push('adicionar', 'dashboard', 'perfil');
       return ordered;
     }
 

@@ -3,7 +3,7 @@ import CircularGauge from './circular_gauge.jsx';
 import DaysStreak from './status_dia_consecutivos.jsx';
 import theme from '../../theme';
 
-export default function StatsCard({ title, value = 0, max = 100, description, type = 'gauge', days = [] }) {
+export default function StatsCard({ title, value = 0, max = 100, description, type = 'gauge', days = [], dates = [] }) {
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -14,7 +14,7 @@ export default function StatsCard({ title, value = 0, max = 100, description, ty
 
       <View style={styles.center}> 
         {type === 'days' ? (
-          <DaysStreak days={days} totalDays={max} />
+          <DaysStreak days={days} totalDays={max} dates={dates} />
         ) : (
           <CircularGauge value={value} max={max} size={100} strokeWidth={6} />
         )}

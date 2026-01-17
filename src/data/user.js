@@ -1,6 +1,7 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { auth, db } from '../services/firebase/firebase_config';
+import { dashboardEvents } from '../utils/dashboard_events';
 
 const usersCollection = collection(db, 'Usuarios');
 
@@ -190,6 +191,9 @@ export const updateUser = async (uid, userData) => {
   // Evita sobrescrever objetos aninhados: usa caminhos ponto com updateDoc
   const flat = flattenObject(payload);
   await updateDoc(doc(db, 'Usuarios', uid), flat);
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
 };
 
 export const deleteUser = async (uid) => {
@@ -219,6 +223,9 @@ export const addSonoScoreHoje = async (uid, score) => {
     'ferramentas.sono.historicoScore': arrayUnion({ score, at: new Date() }),
     updatedAt: new Date(),
   });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
 };
 
 export const addFocoPontosHoje = async (uid, pontos) => {
@@ -227,6 +234,9 @@ export const addFocoPontosHoje = async (uid, pontos) => {
     'ferramentas.foco.pontos.historico': arrayUnion({ pontos, at: new Date() }),
     updatedAt: new Date(),
   });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
 };
 
 export const pushAgendaEventoConcluido = async (uid, evento) => {
@@ -237,4 +247,7 @@ export const pushAgendaEventoConcluido = async (uid, evento) => {
     }),
     updatedAt: new Date(),
   });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
 };

@@ -1,20 +1,54 @@
-import { useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, ActivityIndicator, AppState } from 'react-native';
 import StatsCard from './stats_card.jsx';
 import SleepSummaryCard from './sleep_summary_card.jsx';
 import WeeklyPerformanceChart from './weekly_performance_chart.jsx';
 import { useUserData } from '../../hooks/use_user_data.js';
 import { useDashboardData } from '../../hooks/use_dashboard_data.js';
 import theme from '../../theme/index.js';
+import { dashboardEvents } from '../../utils/dashboard_events.js';
 
 export default function Dashboard() {
   const { width } = useWindowDimensions();
   const columns = width >= 900 ? 3 : width >= 520 ? 2 : 1;
   const itemWidth = columns === 1 ? '100%' : columns === 2 ? '48%' : '32%';
   const [period, setPeriod] = useState('Dia');
+  const appState = useRef(AppState.currentState);
   
-  const { user, loading, error } = useUserData();
-  const { dashboardData, loading: dashboardLoading, error: dashboardError } = useDashboardData();
+  const { user, loading, error, refetch: refetchUser } = useUserData();
+  const { dashboardData, loading: dashboardLoading, error: dashboardError, refetch: refetchDashboard } = useDashboardData();
+
+  // Atualiza dados ao montar o componente
+  useEffect(() => {
+    refetchUser();
+  }, []);
+
+  // Atualiza dados quando o app volta ao primeiro plano ou componente é montado
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        // App voltou ao primeiro plano, refetch dados
+        refetchDashboard();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refetchDashboard]);
+
+  // Inscreve-se em eventos de atualização do Firebase
+  useEffect(() => {
+    const unsubscribe = dashboardEvents.subscribe(() => {
+      refetchDashboard();
+    });
+
+    return unsubscribe;
+  }, [refetchDashboard]);
 
   // Calcula a produtividade com base nos dados reais
   const calculateProductivity = () => {
@@ -63,7 +97,7 @@ export default function Dashboard() {
       <View style={[styles.hero, { flexDirection: width < 520 ? 'column' : 'row', alignItems: width < 520 ? 'flex-start' : 'center' }]}>
         <View>
           <Text style={styles.heroTitle}>
-            olá {user?.apelido || user?.nome || 'usuário'}! 👋
+            olá {(user?.apelido && user.apelido.trim()) || user?.nome?.split(' ')[0] || 'usuário'}! 👋
           </Text>
           <Text style={styles.heroSub}>{user != null ? `Seja bem-vindo de volta! \n Oque você gostaria de fazer hoje?` : 'Você está tendo um ótimo dia produtivo. Continue assim!'}</Text>
         </View>
@@ -111,7 +145,7 @@ export default function Dashboard() {
                 key={s.key}
                 style={[styles.gridItem, { width: itemWidth, marginRight: (columns > 1 && (idx % columns) !== columns - 1) ? 12 : 0 }]}
               >
-                <StatsCard title={s.title} value={s.value} max={s.max} description={s.description} type={s.type} days={s.days} />
+                <StatsCard title={s.title} value={s.value} max={s.max} description={s.description} type={s.type} days={s.days} dates={s.dates} />
               </View>
             ))}
           </View>

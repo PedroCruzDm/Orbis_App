@@ -8,6 +8,7 @@ import { auth, db } from "../../services/firebase/firebase_config";
 import { getUser } from "../../data/user";
 import { doc, updateDoc, arrayUnion, increment } from "firebase/firestore";
 import { focoInitialHistory } from '../../data/data';
+import { dashboardEvents } from "../../utils/dashboard_events";
 
 const FOCUS_CATEGORIES = [ // Categorias de foco com ícones
   { id: 'ler', label: 'Ler', icon: 'book-open-page-variant', color: '#3B82F6' },
@@ -329,6 +330,9 @@ export default function Modo_Foco() {
           }
 
           await updateDoc(userRef, updates);
+
+          // Dispara evento para atualizar dashboard
+          dashboardEvents.triggerRefetch();
 
           // Atualiza estado local apenas quando há XP de sucesso
           setXpToday((prev) => prev + xpDelta);

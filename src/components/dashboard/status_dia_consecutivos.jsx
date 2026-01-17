@@ -1,10 +1,23 @@
 import { View, Text, StyleSheet } from 'react-native';
 import theme from '../../theme';
 
-export default function DaysStreak({ days = [], skips = [], totalDays = 7 }) {
+export default function DaysStreak({ days = [], skips = [], totalDays = 7, dates = [] }) {
   // Preenche arrays para garantir tamanho correto
   const padded = Array.from({ length: totalDays }).map((_, i) => days[i] || false);
   const skipsArray = Array.from({ length: totalDays }).map((_, i) => skips[i] || false);
+  
+  // Obtém a letra do dia baseada na data real passada em `dates`
+  const getDayLetter = (index) => {
+    const dayLetters = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']; // Dom, Seg, Ter, Qua, Qui, Sex, Sab
+    if (dates && dates[index]) {
+      // Cria data local para evitar shift de timezone
+      const [year, month, day] = dates[index].split('-').map(Number);
+      const d = new Date(year, month - 1, day);
+      const dow = d.getDay(); // 0 = Dom ... 6 = Sáb
+      return dayLetters[dow] || dayLetters[index] || '?';
+    }
+    return dayLetters[index] || '?';
+  };
 
   // Calcula streak atual (do final voltando no tempo)
   const calculateCurrentStreak = () => {
@@ -110,7 +123,7 @@ export default function DaysStreak({ days = [], skips = [], totalDays = 7 }) {
             ]}
           >
             <Text style={[styles.boxText, getBoxTextStyle(i)]}>
-              {['D','S','T','Q','Q','S','S'][i]}
+              {getDayLetter(i)}
             </Text>
           </View>
         ))}

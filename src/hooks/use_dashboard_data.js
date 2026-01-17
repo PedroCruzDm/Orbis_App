@@ -32,8 +32,12 @@ function parseDurationToMinutes(str) {
 }
 
 export function useDashboardData() {
-  const { user, loading, error } = useUserData();
+  const { user, loading, error, refetch: refetchUser } = useUserData();
   const [dashboardData, setDashboardData] = useState(null);
+
+  const refetch = async () => {
+    await refetchUser();
+  };
 
   useEffect(() => {
     if (!user || !user.ferramentas) return;
@@ -123,6 +127,7 @@ export function useDashboardData() {
         description: 'Sequência ativa',
         type: 'days',
         days: streakDays.week,
+        dates: streakDays.dates,
       },
     ];
 
@@ -158,36 +163,81 @@ export function useDashboardData() {
     });
   }, [user]);
 
-  return { dashboardData, loading, error };
+  return { dashboardData, loading, error, refetch };
 }
 
-// Calcula streak de dias consecutivos baseado no histórico de foco
-function calculateStreak(history = []) {
-  if (!history || history.length === 0) {
-    return { current: 0, week: [false, false, false, false, false, false, false] };
-  }
+const toLocalDateStr = (msOrDate) => {
+  const d = new Date(msOrDate);
+  // normaliza para data local (ignora fuso na virada)
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().split('T')[0];
+};
 
+// Calcula streak de dias consecutivos com a regra:
+// - Último dia de atividade pode ser hoje ou ontem; se for antes de ontem, zera.
+// - Conta apenas dias ativos consecutivos até esse último dia ativo.
+function calculateStreak(history = []) {
   const today = new Date();
+
+  const activityDays = new Set(
+    (history || [])
+      .map((entry) => {
+        const dt = toDateMs(entry.timestamp || entry.date || entry.id);
+        return dt ? toLocalDateStr(dt) : null;
+      })
+      .filter(Boolean)
+  );
+
+  // Calcula o domingo da semana atual
+  const sunday = new Date(today);
+  sunday.setDate(sunday.getDate() - sunday.getDay()); // Volta para domingo
+  
+  // Gera os 7 dias começando no domingo
   const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (6 - i));
-    return d.toISOString().split('T')[0];
+    const d = new Date(sunday);
+    d.setDate(d.getDate() + i);
+    return toLocalDateStr(d);
   });
 
-  const daysWithActivity = history.map((entry) => {
-    const dt = toDateMs(entry.timestamp || entry.date || entry.id);
-    return dt ? new Date(dt).toISOString().split('T')[0] : null;
-  }).filter(Boolean);
-
-  const week = last7Days.map((day) => daysWithActivity.includes(day));
-
-  let current = 0;
-  for (let i = week.length - 1; i >= 0; i -= 1) {
-    if (week[i]) current += 1;
-    else break;
+  if (activityDays.size === 0) {
+    return { current: 0, week: last7Days.map(() => false), dates: last7Days };
   }
 
-  return { current, week };
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const todayStr = toLocalDateStr(today);
+  const yesterdayStr = toLocalDateStr(yesterday);
+
+  // Define o dia-âncora: último dia ativo mais recente (hoje ou ontem)
+  let anchorStr = null;
+  if (activityDays.has(todayStr)) {
+    anchorStr = todayStr;
+  } else if (activityDays.has(yesterdayStr)) {
+    anchorStr = yesterdayStr;
+  }
+
+  // Se não houve atividade nem hoje nem ontem, streak zera
+  if (!anchorStr) {
+    return { current: 0, week: last7Days.map((day) => activityDays.has(day)), dates: last7Days };
+  }
+
+  // Conta dias ativos consecutivos retrocedendo a partir do âncora
+  let current = 0;
+  const cursor = new Date(anchorStr);
+  while (true) {
+    const dateStr = toLocalDateStr(cursor);
+    if (activityDays.has(dateStr)) {
+      current += 1;
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
+    break;
+  }
+
+  const week = last7Days.map((day) => activityDays.has(day));
+
+  return { current, week, dates: last7Days };
 }
 
 // Calcula dados semanais: minutos de foco e score de sono por dia
