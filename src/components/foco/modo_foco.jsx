@@ -9,6 +9,7 @@ import { getUser } from "../../data/user";
 import { doc, updateDoc, arrayUnion, increment } from "firebase/firestore";
 import { focoInitialHistory } from '../../data/data';
 import { dashboardEvents } from "../../utils/dashboard_events";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FOCUS_CATEGORIES = [ // Categorias de foco com ícones
   { id: 'ler', label: 'Ler', icon: 'book-open-page-variant', color: '#3B82F6' },
@@ -39,8 +40,11 @@ export default function Modo_Foco() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
   const [daysStreak, setDaysStreak] = useState([]);
   const [consecutiveDays, setConsecutiveDays] = useState(0);
+  const [pendingTasks, setPendingTasks] = useState([]);
+  const [currentPendingTaskId, setCurrentPendingTaskId] = useState(null);
   const timerRef = useRef(null);
 
   const formatMMSS = (secs) => {
@@ -123,6 +127,116 @@ export default function Modo_Foco() {
   useEffect(() => {
     setHistory((prev) => sortHistoryRecords(prev));
   }, []);
+
+  // Carrega tarefas pendentes salvas pela Agenda
+  const loadPendingTasks = async () => {
+    try {
+      const raw = await AsyncStorage.getItem('@orbis_focus_pending');
+      const list = raw ? JSON.parse(raw) : [];
+      const todayStr = new Date().toISOString().split('T')[0];
+      
+      if (!Array.isArray(list)) {
+        setPendingTasks([]);
+        return;
+      }
+
+      // Separa tarefas vencidas (passaram do prazo) das pendentes
+      const expired = [];
+      const pending = [];
+      
+      list.forEach(it => {
+        const taskDate = it?.date || '';
+        if (taskDate < todayStr) {
+          expired.push(it);
+        } else {
+          pending.push(it);
+        }
+      });
+
+      // Move tarefas vencidas para o histórico como falhas
+      if (expired.length > 0 && userUid) {
+        await processMissedTasks(expired);
+      }
+
+      // Remove tarefas vencidas da lista de pendentes
+      if (expired.length > 0) {
+        await AsyncStorage.setItem('@orbis_focus_pending', JSON.stringify(pending));
+      }
+
+      // Ordena tarefas pendentes
+      const sortKey = (it) => `${it.date || '9999-99-99'} ${(it.startTime || '99:99')}`;
+      pending.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+      setPendingTasks(pending);
+    } catch (e) {
+      setPendingTasks([]);
+    }
+  };
+
+  // Processa tarefas que passaram do prazo como falhadas
+  const processMissedTasks = async (missedTasks) => {
+    if (!userUid || !Array.isArray(missedTasks) || missedTasks.length === 0) return;
+    
+    try {
+      const userRef = doc(db, 'Usuarios', userUid);
+      
+      for (const task of missedTasks) {
+        const failedRecord = {
+          id: task.id,
+          title: task.title || 'Tarefa sem nome',
+          nomeTarefa: task.title || 'Tarefa sem nome',
+          categoria: task.type || 'Foco',
+          categoriaTitulo: task.type || 'Foco',
+          categoriaId: 'sem-categoria',
+          tempo: '00:00:00',
+          tempoFoco: '00:00:00',
+          timeSpent: '00:00:00',
+          statusTarefa: 'falha',
+          status: 'Falha',
+          dia: task.date,
+          date: new Date().toLocaleString('pt-BR', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: 'numeric',
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          xpGerado: 0,
+          xp: 0,
+          timestamp: new Date(),
+          taskId: task.id,
+        };
+
+        await updateDoc(userRef, {
+          'ferramentas.foco.tarefas.listaHistorico': arrayUnion(failedRecord),
+          'ferramentas.foco.tarefas.listaFalhada': arrayUnion(failedRecord),
+        });
+
+        // Atualiza histórico local
+        setHistory((prev) => sortHistoryRecords([failedRecord, ...prev]));
+      }
+
+      // Dispara evento para atualizar dashboard
+      dashboardEvents.triggerRefetch();
+    } catch (error) {
+      console.error('Erro ao processar tarefas vencidas:', error);
+    }
+  };
+
+  // Remove tarefa pendente após conclusão com sucesso
+  const removeCompletedPendingTask = async (taskId) => {
+    if (!taskId) return;
+    try {
+      const raw = await AsyncStorage.getItem('@orbis_focus_pending');
+      const list = raw ? JSON.parse(raw) : [];
+      const filtered = Array.isArray(list) ? list.filter(it => it.id !== taskId) : [];
+      await AsyncStorage.setItem('@orbis_focus_pending', JSON.stringify(filtered));
+      // Recarrega a lista
+      await loadPendingTasks();
+      setCurrentPendingTaskId(null);
+    } catch (e) {
+      console.error('Erro ao remover tarefa pendente:', e);
+    }
+  };
 
   // Util helpers para retenção
   const toDateMs = (ts) => {
@@ -208,8 +322,15 @@ export default function Modo_Foco() {
       }
       setUserUid(user.uid);
       await reloadFocusHistory(user.uid);
+      // também carrega tarefas pendentes locais
+      loadPendingTasks();
     });
     return () => unsub();
+  }, []);
+
+  // Recarrega pendentes quando entrar na tela ou abrir histórico
+  useEffect(() => {
+    loadPendingTasks();
   }, []);
 
   // Recarrega dados quando o modal de histórico é aberto (mas apenas se o timer não estiver rodando)
@@ -218,6 +339,13 @@ export default function Modo_Foco() {
       reloadFocusHistory(userUid);
     }
   }, [showHistoryModal, userUid]);
+
+  // Recarrega pendências quando o modal é aberto
+  useEffect(() => {
+    if (showPendingModal) {
+      loadPendingTasks();
+    }
+  }, [showPendingModal]);
 
   const onStopAndValidate = async () => {
     setRunning(false);
@@ -359,6 +487,11 @@ export default function Modo_Foco() {
       setXpToday((prev) => prev + xpDelta);
       setXpTotal((prev) => prev + xpDelta);
     }
+
+    // Remove tarefa pendente se foi concluída com sucesso
+    if (validationResult && validationResult.status === 'Sucesso' && currentPendingTaskId) {
+      await removeCompletedPendingTask(currentPendingTaskId);
+    }
     
     // Reseta timer após 2 segundos
     setTimeout(() => {
@@ -389,6 +522,42 @@ export default function Modo_Foco() {
       setCurrentFocusTaskName(categoryLabel);
     }
     setRunning((v) => !v);
+  };
+
+  // Preparar/Iniciar a partir de uma tarefa pendente da Agenda
+  const startFromPending = async (task) => {
+    try {
+      // Se a tarefa tem categoria explícita, usa ela; senão mapeia do tipo
+      const category = task?.category || mapTypeToCategory(task?.type);
+      setSelectedCategory(category);
+      const name = (task?.title || '').trim();
+      if (name) setCurrentFocusTaskName(name);
+      // Marca o ID da tarefa pendente em execução
+      setCurrentPendingTaskId(task?.id);
+      // usa tempo definido, se houver duração
+      const durMin = parseInt(task?.duration, 10);
+      if (Number.isFinite(durMin) && durMin > 0) {
+        setTimerMode('tempo');
+        setCustomTime(durMin * 60);
+      } else {
+        setTimerMode('cronometro');
+      }
+      // inicia diretamente
+      setTimeout(() => {
+        onToggle();
+      }, 100);
+    } catch {}
+  };
+
+  const mapTypeToCategory = (type) => {
+    const t = String(type || '').toLowerCase();
+    if (t.includes('estudo')) return 'estudar';
+    if (t.includes('trabalho')) return 'praticar';
+    if (t.includes('saúde')) return 'treinar';
+    if (t.includes('ler') || t.includes('leitura')) return 'ler';
+    if (t.includes('revis')) return 'revisar';
+    if (t.includes('assist')) return 'assistir';
+    return 'estudar';
   };
 
   const onTimerModeChange = (mode) => {
@@ -443,6 +612,13 @@ export default function Modo_Foco() {
               >
                 <MaterialCommunityIcons name="history" size={24} color="#9CA3AF" />
               </TouchableOpacity>
+              <TouchableOpacity style={styles.headerIconButton}
+                onPress={() => setShowPendingModal(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialCommunityIcons name="clipboard-list-outline" size={24} color="#9CA3AF" />
+              </TouchableOpacity>
             </View>
               <View style={styles.timerModeToggle}>
           <TouchableOpacity
@@ -477,8 +653,9 @@ export default function Modo_Foco() {
               const pct = Math.max(0, Math.min(100, Math.round((effectiveElapsed / total) * 100)));
               const dashOffset = circumference - (pct / 100) * circumference;
               const label = selectedCategory === 'descanso' ? 'Pausa Curta' : (currentFocusTaskName?.trim() || (currentCategory?.label || 'Foco'));
+              const extraTime = elapsed - customTime;
               const timeText = timerMode === 'tempo'
-                ? (elapsed >= customTime ? `+${formatMMSS(elapsed - customTime)}` : formatMMSS(customTime - elapsed))
+                ? (elapsed >= customTime ? (extraTime > 0 ? `+${formatMMSS(extraTime)}` : formatMMSS(0)) : formatMMSS(customTime - elapsed))
                 : (elapsed >= 3600 ? formatHMS(elapsed) : formatMMSS(elapsed));
               return (
                 <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -498,7 +675,7 @@ export default function Modo_Foco() {
                     />
                   </Svg>
                   <View style={styles.timerCenter}> 
-                    <Text style={[styles.timerValueText, elapsed >= 3600 && { fontSize: 40 }]} numberOfLines={1} adjustsFontSizeToFit>
+                    <Text style={[styles.timerValueText, elapsed >= 3600 && { fontSize: 40 }, timerMode === 'tempo' && extraTime > 0 && { color: '#10B981' }]} numberOfLines={1} adjustsFontSizeToFit>
                       {timeText}
                     </Text>
                     <Text style={styles.timerLabelText}>{label}</Text>
@@ -955,6 +1132,114 @@ export default function Modo_Foco() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal - Pendências (tarefas da Agenda) */}
+      <Modal visible={showPendingModal} transparent animationType="fade">
+        <View style={styles.historyModalOverlay}>
+          <View style={styles.historyModalContent}>
+            <View style={styles.historyModalHeader}>
+              <View>
+                <Text style={styles.historyModalTitle}>Pendências</Text>
+                <Text style={styles.historyModalSubtitle}>{pendingTasks.length} {pendingTasks.length === 1 ? 'atividade' : 'atividades'} pendente(s)</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setShowPendingModal(false)}
+                style={styles.closeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {pendingTasks && pendingTasks.length > 0 ? (
+              <FlatList
+                data={pendingTasks}
+                keyExtractor={(item) => item.id.toString()}
+                scrollEnabled={true}
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.historyListContent}
+                renderItem={({ item }) => (
+                  <View style={styles.historyCard}>
+                    {/* Icon & Category */}
+                    <View style={styles.historyCardHeader}>
+                      <View style={[
+                        styles.categoryIconContainer,
+                        { backgroundColor: '#3B82F615' }
+                      ]}>
+                        <MaterialCommunityIcons 
+                          name="clipboard-list-outline" 
+                          size={20} 
+                          color="#3B82F6" 
+                        />
+                      </View>
+                      <View style={styles.historyCardHeaderText}>
+                        <Text style={styles.historyCardTitle} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.historyCardCategory}>
+                          {item.type || 'Foco'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Info Row */}
+                    <View style={styles.historyCardInfo}>
+                      <View style={styles.infoItem}>
+                        <MaterialCommunityIcons name="calendar-outline" size={14} color="#6B7280" />
+                        <Text style={styles.infoText}>{item.date}</Text>
+                      </View>
+                      {item.startTime && (
+                        <View style={styles.infoItem}>
+                          <MaterialCommunityIcons name="clock-outline" size={14} color="#6B7280" />
+                          <Text style={styles.infoText}>{item.startTime}</Text>
+                        </View>
+                      )}
+                      {item.duration > 0 && (
+                        <View style={styles.infoItem}>
+                          <MaterialCommunityIcons name="timer-outline" size={14} color="#6B7280" />
+                          <Text style={styles.infoText}>{item.duration}min</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Footer: Status & Action */}
+                    <View style={styles.historyCardFooter}>
+                      <View style={[styles.statusBadge, { backgroundColor: '#FEF3C7' }]}>
+                        <MaterialCommunityIcons 
+                          name="clock-alert-outline" 
+                          size={12} 
+                          color="#D97706" 
+                        />
+                        <Text style={[styles.statusBadgeText, { color: '#D97706' }]}>
+                          Pendente
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={styles.startActionBtn} 
+                        onPress={() => { setShowPendingModal(false); startFromPending(item); }}
+                      >
+                        <MaterialCommunityIcons name="play" size={14} color="#FFF" />
+                        <Text style={styles.startActionText}>Iniciar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              />
+            ) : (
+              <View style={styles.emptyHistory}>
+                <View style={styles.emptyHistoryIcon}>
+                  <MaterialCommunityIcons name="clipboard-list-outline" size={56} color="#D1D5DB" />
+                </View>
+                <Text style={styles.emptyHistoryTitle}>Sem pendências</Text>
+                <Text style={styles.emptyHistoryText}>
+                  Adicione um bloco de foco na agenda para aparecer aqui.
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1123,6 +1408,20 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
     paddingHorizontal: 8,
+  },
+  startActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  startActionText: { 
+    color: '#FFF', 
+    fontWeight: '700', 
+    fontSize: 12 
   },
   roundControlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18, marginTop: 12, marginBottom: 8 },
   roundBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
