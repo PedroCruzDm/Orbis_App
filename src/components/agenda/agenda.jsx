@@ -8,11 +8,16 @@ import {
   StyleSheet, 
   Modal,
   Platform,
+  Alert,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import DateTimePicker from '@react-native-community/datetimepicker';
 import theme from "../../theme";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUserData } from "../../hooks/use_user_data";
+import { saveAgendaEventosFixos, saveAgendaEventosFlexiveis, addAgendaXP } from "../../data/user";
+import { auth, db } from "../../services/firebase/firebase_config";
+import { doc, updateDoc } from "firebase/firestore";
 
 const FOCUS_CATEGORIES = [
   { id: 'ler', label: 'Ler', icon: 'book-open-page-variant', color: '#3B82F6' },
@@ -29,24 +34,42 @@ export default function Agenda() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [showEventModal, setShowEventModal] = useState(false);
   const [modalType, setModalType] = useState("fixed");
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const { user } = useUserData();
   
   // Estados para cada tipo de evento
   const [fixedCommitments, setFixedCommitments] = useState([]);
   const [flexibleTasks, setFlexibleTasks] = useState([]);
-  const [essentialActivities, setEssentialActivities] = useState([]);
   const [focusBlocks, setFocusBlocks] = useState([]);
   const [focusPendingLocal, setFocusPendingLocal] = useState([]);
+  const [hasFixedConflict, setHasFixedConflict] = useState(false);
+  
+  // Estados para edição
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [selectedEventForAction, setSelectedEventForAction] = useState(null);
+  const [actionType, setActionType] = useState(null); // 'edit', 'deleteOne', 'deleteAll'
+  
+  // Estados para configurações
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
+  const [agendaSettings, setAgendaSettings] = useState({
+    notificacaoEventos: true,
+    horarioLembrete: "09:00",
+  });
   
   const [form, setForm] = useState({
     title: "",
     startTime: "09:00",
+    endTime: "10:00",
     duration: "60",
     type: "Trabalho",
     priority: "MEDIUM",
     recurrence: "Nenhuma",
     preferredSlot: "AFTERNOON",
     category: "estudar",
+    weekDays: [], // ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']
   });
 
   const generateCalendar = () => {
@@ -106,25 +129,382 @@ export default function Agenda() {
       date: selectedDate.toISOString().split("T")[0],
       status: "Pending",
     };
-    
-    switch(modalType) {
-      case "fixed":
-        setFixedCommitments([...fixedCommitments, newEvent]);
-        break;
-      case "flexible":
-        setFlexibleTasks([...flexibleTasks, newEvent]);
-        break;
-      case "essential":
-        setEssentialActivities([...essentialActivities, newEvent]);
-        break;
-      case "focus":
-        setFocusBlocks([...focusBlocks, newEvent]);
-        savePendingFocusTask(newEvent);
-        break;
+
+    // Validação de conflito para tarefas flexíveis
+    if ((modalType === 'flexible' || editingEvent?.eventType === 'flexible')) {
+      const durationMin = parseDurationToMinutesLocal(form.duration) || 0;
+      const dateStr = selectedDate.toISOString().split("T")[0];
+      if (hasConflictWithFixed(dateStr, form.startTime, durationMin)) {
+        Alert.alert('Conflito de horário', 'Este horário já está ocupado por um evento fixo. Escolha outro horário.');
+        return;
+      }
     }
     
-    setForm({ title: "", startTime: "09:00", duration: "60", type: "Trabalho", priority: "MEDIUM", recurrence: "Nenhuma", preferredSlot: "AFTERNOON", category: "estudar" });
+    if (editingEvent) {
+      // Modo edição
+      let updatedList;
+      switch(editingEvent.eventType) {
+        case "fixed":
+          updatedList = fixedCommitments.map(e => e.id === editingEvent.originalId ? { ...e, ...form } : e);
+          setFixedCommitments(updatedList);
+          saveEventosToFirebase(updatedList, 'fixed');
+          break;
+        case "flexible":
+          updatedList = flexibleTasks.map(e => e.id === editingEvent.originalId ? { ...e, ...form } : e);
+          setFlexibleTasks(updatedList);
+          saveEventosToFirebase(updatedList, 'flexible');
+          break;
+
+        case "focus":
+          updatedList = focusBlocks.map(e => e.id === editingEvent.originalId ? { ...e, ...form } : e);
+          setFocusBlocks(updatedList);
+          savePendingFocusTask({ ...editingEvent, ...form });
+          break;
+      }
+      setEditingEvent(null);
+    } else {
+      // Novo evento
+      let updatedList;
+      switch(modalType) {
+        case "fixed":
+          updatedList = [...fixedCommitments, newEvent];
+          setFixedCommitments(updatedList);
+          saveEventosToFirebase(updatedList, 'fixed');
+          break;
+        case "flexible":
+          updatedList = [...flexibleTasks, newEvent];
+          setFlexibleTasks(updatedList);
+          saveEventosToFirebase(updatedList, 'flexible');
+          break;
+
+        case "focus":
+          updatedList = [...focusBlocks, newEvent];
+          setFocusBlocks(updatedList);
+          savePendingFocusTask(newEvent);
+          break;
+      }
+    }
+    
+    setForm({ title: "", startTime: "09:00", endTime: "10:00", duration: "60", type: "Trabalho", priority: "MEDIUM", recurrence: "Nenhuma", preferredSlot: "AFTERNOON", category: "estudar", weekDays: [] });
     setShowEventModal(false);
+  };
+
+  const saveEventosToFirebase = async (eventos, tipo) => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      switch(tipo) {
+        case 'fixed':
+          await saveAgendaEventosFixos(currentUser.uid, eventos);
+          break;
+        case 'flexible':
+          await saveAgendaEventosFlexiveis(currentUser.uid, eventos);
+          break;
+
+      }
+    } catch (error) {
+      console.error(`Erro ao salvar eventos ${tipo}:`, error);
+    }
+  };
+
+  const handleStartTimeChange = (event, selectedTime) => {
+    if (Platform.OS === 'android') {
+      setShowStartTimePicker(false);
+    }
+    if (selectedTime) {
+      const hours = String(selectedTime.getHours()).padStart(2, '0');
+      const minutes = String(selectedTime.getMinutes()).padStart(2, '0');
+      setForm({ ...form, startTime: `${hours}:${minutes}` });
+    }
+  };
+
+  const handleEndTimeChange = (event, selectedTime) => {
+    if (Platform.OS === 'android') {
+      setShowEndTimePicker(false);
+    }
+    if (selectedTime) {
+      const hours = String(selectedTime.getHours()).padStart(2, '0');
+      const minutes = String(selectedTime.getMinutes()).padStart(2, '0');
+      setForm({ ...form, endTime: `${hours}:${minutes}` });
+    }
+  };
+
+  const toMinutes = (hhmm = "00:00") => {
+    const [h, m] = (hhmm || "00:00").split(':').map((n) => parseInt(n, 10) || 0);
+    return h * 60 + m;
+  };
+
+  const hasConflictWithFixed = (dateStr, startTime, durationMin) => {
+    const expanded = expandFixedEvents(fixedCommitments);
+    const dayEvents = expanded.filter((e) => e.date === dateStr);
+
+    const flexStart = toMinutes(startTime || "00:00");
+    const flexEnd = flexStart + (durationMin || 0);
+
+    return dayEvents.some((ev) => {
+      const evStart = toMinutes(ev.startTime || "00:00");
+      const evEnd = ev.endTime ? toMinutes(ev.endTime) : evStart + (parseDurationToMinutesLocal(ev.duration) || 0);
+      return flexStart < evEnd && flexEnd > evStart; // overlap
+    });
+  };
+
+  useEffect(() => {
+    // Atualiza indicador visual de conflito para tarefas flexíveis
+    if (modalType === 'flexible' || editingEvent?.eventType === 'flexible') {
+      const durationMin = parseDurationToMinutesLocal(form.duration) || 0;
+      const dateStr = selectedDate.toISOString().split("T")[0];
+      setHasFixedConflict(hasConflictWithFixed(dateStr, form.startTime, durationMin));
+    } else {
+      setHasFixedConflict(false);
+    }
+  }, [modalType, editingEvent, form.startTime, form.duration, selectedDate, fixedCommitments]);
+
+  // Handlers para edição e deleção
+  const handleEditEvent = (event) => {
+    setEditingEvent(event);
+    setForm({
+      title: event.title,
+      startTime: event.startTime || "09:00",
+      endTime: event.endTime || "10:00",
+      duration: event.duration || "60",
+      type: event.type || "Trabalho",
+      priority: event.priority || "MEDIUM",
+      recurrence: event.recurrence || "Nenhuma",
+      preferredSlot: event.preferredSlot || "AFTERNOON",
+      category: event.category || "estudar",
+      weekDays: event.weekDays || [],
+    });
+    setModalType(event.eventType);
+    setShowEventModal(true);
+    setShowActionModal(false);
+  };
+
+  // Salvar configurações da agenda
+  const handleSaveSettings = async () => {
+    try {
+      // Salva no AsyncStorage
+      await AsyncStorage.setItem('@agenda_settings', JSON.stringify(agendaSettings));
+      
+      // Salva no Firebase se usuário logado
+      if (user?.uid) {
+        const userRef = doc(db, 'Usuarios', user.uid);
+        await updateDoc(userRef, {
+          'ferramentas.agenda.configuracoes': agendaSettings,
+          updatedAt: new Date(),
+        });
+      }
+      
+      Alert.alert('Sucesso', 'Configurações da agenda salvas!');
+      setShowSettingsModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
+      Alert.alert('Erro', 'Não foi possível salvar as configurações');
+    }
+  };
+
+  // Carregar configurações ao montar
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('@agenda_settings');
+        if (saved) {
+          setAgendaSettings(JSON.parse(saved));
+        }
+      } catch (error) {
+        console.error('Erro ao carregar configurações:', error);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const handleDeleteEvent = (deleteMode) => {
+    if (!selectedEventForAction) return;
+
+    const { eventType, originalId, id, date } = selectedEventForAction;
+
+    if (deleteMode === 'deleteOne') {
+      // Deleta apenas a ocorrência de um dia específico
+      let updatedList;
+      if (eventType === "fixed") {
+        updatedList = fixedCommitments.map(e => {
+          if (e.id === originalId && e.weekDays && e.weekDays.length > 0) {
+            // Evento recorrente: marca data como exceção
+            return {
+              ...e,
+              exceptions: [...(e.exceptions || []), date]
+            };
+          }
+          return e.id === id ? null : e;
+        }).filter(Boolean);
+        setFixedCommitments(updatedList);
+        saveEventosToFirebase(updatedList, 'fixed');
+      } else if (eventType === "flexible") {
+        updatedList = flexibleTasks.filter(e => e.id !== id);
+        setFlexibleTasks(updatedList);
+        saveEventosToFirebase(updatedList, 'flexible');
+      } else if (eventType === "focus") {
+        updatedList = focusBlocks.filter(e => e.id !== id);
+        setFocusBlocks(updatedList);
+      }
+    } else if (deleteMode === 'deleteAll') {
+      // Deleta todas as ocorrências (só faz sentido para eventos recorrentes)
+      let updatedList;
+      if (eventType === "fixed") {
+        updatedList = fixedCommitments.filter(e => e.id !== originalId);
+        setFixedCommitments(updatedList);
+        saveEventosToFirebase(updatedList, 'fixed');
+      } else if (eventType === "flexible") {
+        updatedList = flexibleTasks.filter(e => e.id !== originalId);
+        setFlexibleTasks(updatedList);
+        saveEventosToFirebase(updatedList, 'flexible');
+      } else if (eventType === "focus") {
+        updatedList = focusBlocks.filter(e => e.id !== originalId);
+        setFocusBlocks(updatedList);
+      }
+    }
+
+    setShowActionModal(false);
+    setSelectedEventForAction(null);
+  };
+
+  const handleOpenActionModal = (event) => {
+    setSelectedEventForAction(event);
+    setShowActionModal(true);
+  };
+
+  // Verifica se o horário final do evento já passou
+  const hasPassedEventEnd = (event) => {
+    try {
+      if (!event || !event.date) return false;
+      const now = new Date();
+      const baseDate = new Date(`${event.date}T00:00:00`);
+
+      let endDateTime = null;
+
+      // Evento fixo com horário de término explícito
+      if (event.eventType === 'fixed' && event.endTime) {
+        const [eh, em] = event.endTime.split(':').map((v) => parseInt(v, 10));
+        endDateTime = new Date(baseDate);
+        endDateTime.setHours(Number.isFinite(eh) ? eh : 0, Number.isFinite(em) ? em : 0, 0, 0);
+      }
+      // Outros eventos com início + duração
+      else if (event.startTime && event.duration) {
+        const [sh, sm] = event.startTime.split(':').map((v) => parseInt(v, 10));
+        const startDateTime = new Date(baseDate);
+        startDateTime.setHours(Number.isFinite(sh) ? sh : 0, Number.isFinite(sm) ? sm : 0, 0, 0);
+        const durationMs = Number(event.duration) * 60000;
+        endDateTime = new Date(startDateTime.getTime() + (Number.isFinite(durationMs) ? durationMs : 0));
+      }
+
+      if (!endDateTime) return false;
+      return now >= endDateTime;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleCompleteEvent = async (event) => {
+    if (!event || !user?.uid) return;
+
+    try {
+      // Adiciona XP (+5) ao usuário
+      const result = await addAgendaXP(user.uid, 5);
+      
+      // Remove o evento das listas ativas
+      const { eventType, id, originalId } = event;
+      
+      if (eventType === "fixed") {
+        const updatedList = fixedCommitments.filter(e => e.id !== id);
+        setFixedCommitments(updatedList);
+        saveEventosToFirebase(updatedList, 'fixed');
+      } else if (eventType === "flexible") {
+        const updatedList = flexibleTasks.filter(e => e.id !== id);
+        setFlexibleTasks(updatedList);
+        saveEventosToFirebase(updatedList, 'flexible');
+      } else if (eventType === "focus") {
+        const updatedList = focusBlocks.filter(e => e.id !== id);
+        setFocusBlocks(updatedList);
+      }
+
+      // Fecha modal e mostra mensagem de sucesso
+      setShowActionModal(false);
+      setSelectedEventForAction(null);
+      
+      Alert.alert(
+        'Evento Concluído! 🎉',
+        `Você ganhou +5 XP!\nXP Total da Agenda: ${result?.newXP || 0}`,
+        [{ text: 'OK' }]
+      );
+      
+    } catch (error) {
+      console.error('Erro ao concluir evento:', error);
+      Alert.alert('Erro', 'Não foi possível concluir o evento');
+    }
+  };
+
+  // Expande eventos fixos com recorrência de dias da semana
+  const expandFixedEvents = (events, weeksAhead = 12) => {
+    const expanded = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    events.forEach((event) => {
+      if (event.weekDays && event.weekDays.length > 0) {
+        // Mapeamento de dias da semana (0 = domingo)
+        const dayMap = {
+          'seg': 1, 'ter': 2, 'qua': 3, 'qui': 4, 'sex': 5, 'sab': 6, 'dom': 0
+        };
+        const selectedDaysOfWeek = event.weekDays.map(d => dayMap[d]);
+        const exceptions = event.exceptions || [];
+        
+        // Data de início: primeiro dia da semana que corresponde aos dias selecionados
+        const startDate = new Date(today);
+        const today_dayOfWeek = today.getDay();
+        
+        // Encontra o primeiro dia que combina com a seleção
+        let daysToAdd = 0;
+        let found = false;
+        for (let i = 0; i < 7; i++) {
+          const testDay = (today_dayOfWeek + i) % 7;
+          if (selectedDaysOfWeek.includes(testDay)) {
+            daysToAdd = i;
+            found = true;
+            break;
+          }
+        }
+        
+        if (found) {
+          startDate.setDate(startDate.getDate() + daysToAdd);
+        }
+
+        // Gera eventos para as próximas X semanas a partir do primeiro dia que combina
+        for (let week = 0; week < weeksAhead; week++) {
+          for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+            const checkDate = new Date(startDate);
+            checkDate.setDate(checkDate.getDate() + week * 7 + dayOffset);
+            const dateStr = checkDate.toISOString().split('T')[0];
+            
+            // Pula se a data está na lista de exceções
+            if (exceptions.includes(dateStr)) continue;
+            
+            if (selectedDaysOfWeek.includes(checkDate.getDay())) {
+              expanded.push({
+                ...event,
+                id: `${event.id}-${dateStr}`,
+                date: dateStr,
+                originalId: event.id,
+              });
+            }
+          }
+        }
+      } else {
+        // Eventos fixos sem recorrência de dias
+        expanded.push(event);
+      }
+    });
+
+    return expanded;
   };
 
   // Salva evento de foco como pendente para o Modo Foco
@@ -231,6 +611,23 @@ export default function Agenda() {
   };
 
   useEffect(() => {
+    const loadEventsFromFirebase = async () => {
+      try {
+        if (user?.ferramentas?.agenda?.eventosFixos) {
+          setFixedCommitments(user.ferramentas.agenda.eventosFixos);
+        }
+        if (user?.ferramentas?.agenda?.eventosFlexiveis) {
+          setFlexibleTasks(user.ferramentas.agenda.eventosFlexiveis);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar eventos do Firebase:', error);
+      }
+    };
+
+    loadEventsFromFirebase();
+  }, [user]);
+
+  useEffect(() => {
     const loadPendingFromStorage = async () => {
       try {
         const raw = await AsyncStorage.getItem('@orbis_focus_pending');
@@ -242,9 +639,8 @@ export default function Agenda() {
   }, []);
 
   const allEvents = [
-    ...fixedCommitments.map(e => ({ ...e, eventType: "fixed" })),
+    ...expandFixedEvents(fixedCommitments).map(e => ({ ...e, eventType: "fixed" })),
     ...flexibleTasks.map(e => ({ ...e, eventType: "flexible" })),
-    ...essentialActivities.map(e => ({ ...e, eventType: "essential" })),
     ...focusBlocks.map(e => ({ ...e, eventType: "focus" })),
   ];
 
@@ -269,7 +665,10 @@ export default function Agenda() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Agenda</Text>
-        <TouchableOpacity style={styles.headerButton}>
+        <TouchableOpacity 
+          style={styles.headerButton}
+          onPress={() => setShowSettingsModal(true)}
+        >
           <MaterialCommunityIcons name="cog-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
@@ -291,14 +690,6 @@ export default function Agenda() {
           >
             <MaterialCommunityIcons name="calendar-clock" size={20} color="#FFFFFF" />
             <Text style={styles.toolBtnText}>Flexível</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.toolBtn, { backgroundColor: "#10B981" }]} 
-            onPress={() => { setModalType("essential"); setShowEventModal(true); }}
-          >
-            <MaterialCommunityIcons name="star" size={20} color="#FFFFFF" />
-            <Text style={styles.toolBtnText}>Essencial</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -354,14 +745,38 @@ export default function Agenda() {
                     ]}>
                       {day}
                     </Text>
-                    {allEventsWithExternal.some(e => {
-                      const eventDate = new Date(e.date);
-                      return eventDate.getDate() === day && 
-                             eventDate.getMonth() === currentMonth.getMonth() &&
-                             eventDate.getFullYear() === currentMonth.getFullYear();
-                    }) && !isSelected(day) && (
-                      <View style={styles.eventIndicator} />
-                    )}
+                    {(() => {
+                      // Filtra eventos do dia específico
+                      const dayEvents = allEventsWithExternal.filter(e => {
+                        let eventDateStr;
+                        if (typeof e.date === 'string') {
+                          eventDateStr = e.date;
+                        } else if (e.date instanceof Date) {
+                          eventDateStr = e.date.toISOString().split('T')[0];
+                        } else {
+                          return false;
+                        }
+                        
+                        const [year, month, date] = eventDateStr.split('-').map(Number);
+                        return date === day && 
+                               month === currentMonth.getMonth() + 1 &&
+                               year === currentMonth.getFullYear();
+                      });
+                      
+                      // Extrai tipos únicos de eventos
+                      const eventTypes = [...new Set(dayEvents.map(e => e.eventType))];
+                      
+                      return !isSelected(day) && eventTypes.length > 0 && (
+                        <View style={styles.eventIndicators}>
+                          {eventTypes.map(type => (
+                            <View 
+                              key={type} 
+                              style={[styles.eventIndicatorDot, { backgroundColor: getEventTypeColor(type) }]} 
+                            />
+                          ))}
+                        </View>
+                      );
+                    })()}
                   </>
                 )}
               </TouchableOpacity>
@@ -383,15 +798,26 @@ export default function Agenda() {
             <View style={styles.eventsContainerCard}>
               <View style={styles.eventsGrid}>
                 {todayEvents.map((event) => (
-                  <View key={event.id} style={styles.eventCard}>
+                  <TouchableOpacity
+                    key={event.id}
+                    style={styles.eventCard}
+                    onPress={() => handleOpenActionModal(event)}
+                  >
                     <View style={styles.eventTime}>
-                      <Text style={styles.eventTimeText}>{event.startTime || "--:--"}</Text>
+                      <Text style={styles.eventTimeText}>{event.startTime || "—"}</Text>
                     </View>
                     <View style={styles.eventDetails}>
                       <Text style={styles.eventTitle}>{event.title}</Text>
+                      {event.eventType === "fixed" && Array.isArray(event.weekDays) && event.weekDays.length > 0 && (
+                        <Text style={styles.eventWeekDays}>{formatWeekDays(event.weekDays)}</Text>
+                      )}
                       <View style={styles.eventMeta}>
                         <MaterialCommunityIcons name="clock-outline" size={12} color="#9CA3AF" />
-                        <Text style={styles.eventDuration}>{event.duration}min</Text>
+                        <Text style={styles.eventDuration}>
+                          {event.eventType === "fixed" && event.endTime
+                            ? `${event.startTime}-${event.endTime}`
+                            : `${event.duration}min`}
+                        </Text>
                         <View style={[styles.categoryBadge, { backgroundColor: getEventTypeColor(event.eventType) + "20" }]}>        
                           <Text style={[styles.categoryBadgeText, { color: getEventTypeColor(event.eventType) }]}>
                             {getEventTypeLabel(event.eventType)}
@@ -404,7 +830,7 @@ export default function Agenda() {
                         )}
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -454,40 +880,100 @@ export default function Agenda() {
                 {(modalType === "fixed" || modalType === "focus") && (
                   <View style={styles.row}>
                     <View style={styles.halfField}>
-                      <Text style={styles.label}>Horário</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="09:00"
-                        placeholderTextColor="#9CA3AF"
-                        value={form.startTime}
-                        onChangeText={(text) => setForm({ ...form, startTime: text })}
-                      />
+                      <Text style={styles.label}>Horário Início</Text>
+                      <TouchableOpacity
+                        style={styles.timePickerButton}
+                        onPress={() => setShowStartTimePicker(true)}
+                      >
+                        <MaterialCommunityIcons name="clock-outline" size={20} color={theme.colors.primary[600]} />
+                        <Text style={styles.timePickerButtonText}>{form.startTime}</Text>
+                      </TouchableOpacity>
+                      {showStartTimePicker && (
+                        <DateTimePicker
+                          value={new Date(`2024-01-01T${form.startTime}:00`)}
+                          mode="time"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onChange={handleStartTimeChange}
+                          textColor={theme.colors.primary[600]}
+                        />
+                      )}
                     </View>
                     <View style={styles.halfField}>
-                      <Text style={styles.label}>Duração (min)</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="60"
-                        placeholderTextColor="#9CA3AF"
-                        keyboardType="number-pad"
-                        value={form.duration}
-                        onChangeText={(text) => setForm({ ...form, duration: text })}
-                      />
+                      <Text style={styles.label}>{modalType === "fixed" ? "Horário Fim" : "Duração (min)"}</Text>
+                      {modalType === "fixed" ? (
+                        <>
+                          <TouchableOpacity
+                            style={styles.timePickerButton}
+                            onPress={() => setShowEndTimePicker(true)}
+                          >
+                            <MaterialCommunityIcons name="clock-outline" size={20} color={theme.colors.primary[600]} />
+                            <Text style={styles.timePickerButtonText}>{form.endTime}</Text>
+                          </TouchableOpacity>
+                          {showEndTimePicker && (
+                            <DateTimePicker
+                              value={new Date(`2024-01-01T${form.endTime}:00`)}
+                              mode="time"
+                              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                              onChange={handleEndTimeChange}
+                              textColor={theme.colors.primary[600]}
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <TextInput
+                          style={styles.input}
+                          placeholder="60"
+                          placeholderTextColor="#9CA3AF"
+                          keyboardType="number-pad"
+                          value={form.duration}
+                          onChangeText={(text) => setForm({ ...form, duration: text })}
+                        />
+                      )}
                     </View>
                   </View>
                 )}
 
                 {modalType === "flexible" && (
                   <>
-                    <Text style={styles.label}>Duração Estimada (min)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="60"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="number-pad"
-                      value={form.duration}
-                      onChangeText={(text) => setForm({ ...form, duration: text })}
-                    />
+                    <View style={styles.row}>
+                      <View style={styles.halfField}>
+                        <Text style={styles.label}>Horário</Text>
+                        <TouchableOpacity
+                          style={styles.timePickerButton}
+                          onPress={() => setShowStartTimePicker(true)}
+                        >
+                          <MaterialCommunityIcons name="clock-outline" size={20} color={theme.colors.primary[600]} />
+                          <Text style={styles.timePickerButtonText}>{form.startTime}</Text>
+                        </TouchableOpacity>
+                        {showStartTimePicker && (
+                          <DateTimePicker
+                            value={new Date(`2024-01-01T${form.startTime}:00`)}
+                            mode="time"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={handleStartTimeChange}
+                            textColor={theme.colors.primary[600]}
+                          />
+                        )}
+                      </View>
+                      <View style={styles.halfField}>
+                        <Text style={styles.label}>Duração Estimada (min)</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="60"
+                          placeholderTextColor="#9CA3AF"
+                          keyboardType="number-pad"
+                          value={form.duration}
+                          onChangeText={(text) => setForm({ ...form, duration: text })}
+                        />
+                      </View>
+                    </View>
+
+                    {hasFixedConflict && (
+                      <View style={styles.conflictBanner}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={18} color="#B91C1C" />
+                        <Text style={styles.conflictText}>Horário indisponível devido a evento fixo</Text>
+                      </View>
+                    )}
                     
                     <Text style={styles.label}>Prioridade</Text>
                     <View style={styles.categoryRow}>
@@ -518,20 +1004,6 @@ export default function Agenda() {
                         </TouchableOpacity>
                       ))}
                     </View>
-                  </>
-                )}
-
-                {modalType === "essential" && (
-                  <>
-                    <Text style={styles.label}>Duração (min)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="30"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="number-pad"
-                      value={form.duration}
-                      onChangeText={(text) => setForm({ ...form, duration: text })}
-                    />
                   </>
                 )}
 
@@ -584,6 +1056,42 @@ export default function Agenda() {
 
                 {modalType === "fixed" && (
                   <>
+                    <Text style={styles.label}>Dias da Semana</Text>
+                    <View style={styles.weekDaysGrid}>
+                      {[
+                        { id: 'seg', label: 'Seg' },
+                        { id: 'ter', label: 'Ter' },
+                        { id: 'qua', label: 'Qua' },
+                        { id: 'qui', label: 'Qui' },
+                        { id: 'sex', label: 'Sex' },
+                        { id: 'sab', label: 'Sab' },
+                        { id: 'dom', label: 'Dom' },
+                      ].map((day) => (
+                        <TouchableOpacity
+                          key={day.id}
+                          style={[
+                            styles.dayButton,
+                            form.weekDays.includes(day.id) && styles.dayButtonActive,
+                          ]}
+                          onPress={() => {
+                            const updated = form.weekDays.includes(day.id)
+                              ? form.weekDays.filter(d => d !== day.id)
+                              : [...form.weekDays, day.id];
+                            setForm({ ...form, weekDays: updated });
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.dayButtonText,
+                              form.weekDays.includes(day.id) && styles.dayButtonTextActive,
+                            ]}
+                          >
+                            {day.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
                     <Text style={styles.label}>Recorrência</Text>
                     <View style={styles.categoryRow}>
                       {["Nenhuma", "Diária", "Semanal", "Mensal"].map((rec) => (
@@ -602,10 +1110,230 @@ export default function Agenda() {
                 )}
 
                 <TouchableOpacity style={styles.saveButton} onPress={handleAddEvent}>
-                  <Text style={styles.saveButtonText}>Adicionar</Text>
+                  <Text style={styles.saveButtonText}>{editingEvent ? "Atualizar" : "Adicionar"}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Ações do Evento */}
+      <Modal
+        visible={showActionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowActionModal(false)}
+          />
+          <View style={styles.actionModalCard}>
+            <Text style={styles.actionModalTitle}>Ações do Evento</Text>
+          
+            {hasPassedEventEnd(selectedEventForAction) && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.actionButtonComplete]}
+                onPress={() => handleCompleteEvent(selectedEventForAction)}
+              >
+                <MaterialCommunityIcons name="check-circle" size={20} color="#10B981" />
+                <Text style={[styles.actionButtonText, { color: '#10B981' }]}>Concluir Evento (+5 XP)</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleEditEvent(selectedEventForAction)}
+            >
+              <MaterialCommunityIcons name="pencil" size={20} color="#3B82F6" />
+              <Text style={styles.actionButtonText}>Editar Evento</Text>
+            </TouchableOpacity>
+
+            {selectedEventForAction?.originalId && (
+              <>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleDeleteEvent('deleteOne')}
+                >
+                  <MaterialCommunityIcons name="delete-outline" size={20} color="#F59E0B" />
+                  <Text style={[styles.actionButtonText, { color: '#F59E0B' }]}>
+                    Deletar Apenas Este Dia
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleDeleteEvent('deleteAll')}
+                >
+                  <MaterialCommunityIcons name="delete-multiple" size={20} color="#EF4444" />
+                  <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>
+                    Deletar Todos
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {!selectedEventForAction?.originalId && (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleDeleteEvent('deleteOne')}
+              >
+                <MaterialCommunityIcons name="delete-outline" size={20} color="#EF4444" />
+                <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>
+                  Deletar Evento
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.actionButtonCancel}
+              onPress={() => setShowActionModal(false)}
+            >
+              <Text style={styles.actionButtonCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Configurações */}
+      <Modal
+        visible={showSettingsModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSettingsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.settingsModalContent}>
+            {/* Header */}
+            <View style={styles.settingsHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingsTitle}>Configurações</Text>
+                <Text style={styles.settingsSubtitle}>Personalize sua agenda</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowSettingsModal(false)}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Conteúdo */}
+            <ScrollView 
+              style={styles.settingsScroll}
+              showsVerticalScrollIndicator={true}
+              scrollEventThrottle={16}
+            >
+              {/* Seção: Notificações */}
+              <View style={styles.settingsSection}>
+                <View style={styles.sectionHeader}>
+                  <MaterialCommunityIcons name="bell-outline" size={20} color={theme.colors.primary[600]} />
+                  <Text style={styles.sectionTitle}>Notificações</Text>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.settingItemClickable}
+                  onPress={() =>
+                    setAgendaSettings({
+                      ...agendaSettings,
+                      notificacaoEventos: !agendaSettings.notificacaoEventos
+                    })
+                  }
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingLabel}>
+                    <Text style={styles.settingText}>Notificações de Eventos</Text>
+                    <Text style={styles.settingDescription}>Receba lembretes de seus eventos</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.toggle,
+                      { backgroundColor: agendaSettings.notificacaoEventos ? "#10B981" : "#D1D5DB" }
+                    ]}
+                  >
+                    <View style={[
+                      styles.toggleThumb,
+                      { transform: [{ translateX: agendaSettings.notificacaoEventos ? 20 : 2 }] }
+                    ]} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Seção: Horário */}
+              <View style={styles.settingsSection}>
+                <View style={styles.sectionHeader}>
+                  <MaterialCommunityIcons name="clock-outline" size={20} color={theme.colors.primary[600]} />
+                  <Text style={styles.sectionTitle}>Horário do Lembrete</Text>
+                </View>
+
+                <View style={styles.settingItemBox}>
+                  <Text style={styles.settingText}>Horário padrão</Text>
+                  <Text style={styles.settingDescription}>Define quando receber notificações</Text>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeDisplay}>{agendaSettings.horarioLembrete}</Text>
+                    <TouchableOpacity 
+                      style={styles.timeEditButton}
+                      onPress={() => setShowReminderTimePicker(true)}
+                      activeOpacity={0.6}
+                    >
+                      <MaterialCommunityIcons name="pencil" size={18} color={theme.colors.primary[600]} />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  {showReminderTimePicker && (
+                    <DateTimePicker
+                      value={(() => {
+                        const [hours, minutes] = agendaSettings.horarioLembrete.split(':');
+                        const date = new Date();
+                        date.setHours(parseInt(hours));
+                        date.setMinutes(parseInt(minutes));
+                        return date;
+                      })()}
+                      mode="time"
+                      is24Hour={true}
+                      display="default"
+                      onChange={(event, selectedTime) => {
+                        setShowReminderTimePicker(Platform.OS === 'ios');
+                        if (selectedTime) {
+                          const hours = selectedTime.getHours().toString().padStart(2, '0');
+                          const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
+                          setAgendaSettings({
+                            ...agendaSettings,
+                            horarioLembrete: `${hours}:${minutes}`
+                          });
+                        }
+                      }}
+                    />
+                  )}
+                </View>
+              </View>
+
+              {/* Espaço para scroll */}
+              <View style={{ height: 30 }} />
+            </ScrollView>
+
+            {/* Botões de Ação - Fixed */}
+            <View style={styles.settingsActions}>
+              <TouchableOpacity
+                style={[styles.settingButton, styles.settingButtonCancel]}
+                onPress={() => setShowSettingsModal(false)}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="close" size={20} color="#6B7280" />
+                <Text style={styles.settingButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.settingButton, styles.settingButtonSave]}
+                onPress={handleSaveSettings}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="check" size={20} color="#FFFFFF" />
+                <Text style={[styles.settingButtonText, { color: "#FFFFFF" }]}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -617,7 +1345,6 @@ const getEventTypeColor = (eventType) => {
   const colors = {
     fixed: "#3B82F6",
     flexible: "#8B5CF6",
-    essential: "#10B981",
     focus: "#F59E0B",
     agenda: "#0897ea",
   };
@@ -628,18 +1355,22 @@ const getEventTypeLabel = (eventType) => {
   const labels = {
     fixed: "Fixo",
     flexible: "Flexível",
-    essential: "Essencial",
     focus: "Foco",
     agenda: "Agenda",
   };
   return labels[eventType] || eventType;
 };
 
+const formatWeekDays = (weekDays = []) => {
+  const order = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+  const labels = { seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sab', dom: 'Dom' };
+  return order.filter(id => weekDays.includes(id)).map(id => labels[id] || id).join(', ');
+};
+
 const getModalTitle = (modalType) => {
   const titles = {
     fixed: "Compromisso Fixo",
     flexible: "Tarefa Flexível",
-    essential: "Atividade Essencial",
     focus: "Bloco de Foco",
   };
   return titles[modalType] || "Novo Evento";
@@ -652,8 +1383,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: theme.colors.primary[600],
-    paddingTop: Platform.OS === "ios" ? 50 : 35,
-    paddingBottom: 12,
+    paddingTop: Platform.OS === "ios" ? 12 : 8,
+    paddingBottom: 8,
     paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
@@ -751,6 +1482,17 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 4,
   },
+  eventIndicators: {
+    flexDirection: "row",
+    gap: 3,
+    position: "absolute",
+    bottom: 4,
+  },
+  eventIndicatorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
 
   eventsSection: {
     margin: 16,
@@ -814,6 +1556,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: "#1F2937",
+    marginBottom: 6,
+  },
+  eventWeekDays: {
+    fontSize: 12,
+    color: "#6B7280",
     marginBottom: 6,
   },
   eventMeta: {
@@ -1025,5 +1772,332 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  weekDaysGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+    justifyContent: "space-between",
+  },
+  dayButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    alignItems: "center",
+  },
+  dayButtonActive: {
+    backgroundColor: theme.colors.primary[600],
+    borderColor: theme.colors.primary[600],
+  },
+  dayButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  dayButtonTextActive: {
+    color: "#FFFFFF",
+  },
+  timePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 14 : 12,
+    marginBottom: 16,
+  },
+  timePickerButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: theme.colors.primary[600],
+  },
+  actionModalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    marginHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  actionModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  actionButtonComplete: {
+    backgroundColor: "#F0FDF4",
+    borderBottomWidth: 0,
+    marginBottom: 8,
+  },
+  actionButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#3B82F6",
+  },
+  actionButtonCancel: {
+    marginTop: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+  },
+  actionButtonCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  conflictBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    marginBottom: 12,
+  },
+
+  // ESTILOS DO MODAL DE CONFIGURAÇÕES MELHORADO
+  settingsModalContent: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: 60,
+    paddingBottom: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  settingsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  settingsTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  settingsSubtitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+    marginLeft: 12,
+  },
+  settingsScroll: {
+    flex: 1,
+  },
+  settingsSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  settingItemClickable: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    marginBottom: 12,
+  },
+  settingItemBox: {
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  settingLabel: {
+    flex: 1,
+    gap: 6,
+  },
+  settingText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  settingDescription: {
+    fontSize: 13,
+    color: "#9CA3AF",
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  toggle: {
+    width: 52,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    marginLeft: 12,
+  },
+  toggleThumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  timeInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  timeDisplay: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: theme.colors.primary[600],
+  },
+  timeEditButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+  },
+  daySelector: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  dayButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+  },
+  dayButtonActive: {
+    backgroundColor: theme.colors.primary[600],
+    borderColor: theme.colors.primary[600],
+  },
+  dayButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  dayButtonTextActive: {
+    color: "#FFFFFF",
+  },
+  themeSelector: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 16,
+    gap: 12,
+  },
+  themeOption: {
+    flex: 1,
+    alignItems: "center",
+    gap: 8,
+  },
+  colorButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "transparent",
+  },
+  colorButtonActive: {
+    borderColor: "#1F2937",
+  },
+  themeLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  settingsActions: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+  },
+  settingButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    minHeight: 50,
+  },
+  settingButtonCancel: {
+    backgroundColor: "#F3F4F6",
+  },
+  settingButtonSave: {
+    backgroundColor: theme.colors.primary[600],
+  },
+  settingButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#6B7280",
   },
 });
