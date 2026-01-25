@@ -1,76 +1,81 @@
 import { View, Text, StyleSheet } from 'react-native';
 import theme from '../../theme';
 
-export default function DaysStreak({ days = [], skips = [], totalDays = 7, dates = [] }) {
+export default function DaysStreak({ currentStreak = 0, days = [], skips = [], totalDays = 7, dates = [] }) {
   // Preenche arrays para garantir tamanho correto
-  const padded = Array.from({ length: totalDays }).map((_, i) => days[i] || false);
-  const skipsArray = Array.from({ length: totalDays }).map((_, i) => skips[i] || false);
+  const paddedDays = Array.from({ length: totalDays }).map((_, i) => days[i] || false);
+  const paddedSkips = Array.from({ length: totalDays }).map((_, i) => skips[i] || false);
+  
+  console.log('=== DaysStreak Props ===');
+  console.log('currentStreak recebido:', currentStreak);
+  console.log('days recebido:', days);
+  console.log('paddedDays calculado:', paddedDays);
+  console.log('skips recebido:', skips);
+  console.log('paddedSkips calculado:', paddedSkips);
+  console.log('dates recebido:', dates);
+  
+  const datesList = dates && dates.length === totalDays ? dates : Array.from({ length: totalDays }, (_, i) => {
+    // Gera datas de fallback a partir de hoje
+    const d = new Date();
+    d.setDate(d.getDate() - (totalDays - 1 - i));
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().split('T')[0];
+  });
   
   // Obtém a letra do dia baseada na data real passada em `dates`
   const getDayLetter = (index) => {
     const dayLetters = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']; // Dom, Seg, Ter, Qua, Qui, Sex, Sab
-    if (dates && dates[index]) {
-      // Cria data local para evitar shift de timezone
-      const [year, month, day] = dates[index].split('-').map(Number);
+    if (datesList && datesList[index]) {
+      // Converte YYYY-MM-DD para Date local
+      const [year, month, day] = datesList[index].split('-').map(Number);
       const d = new Date(year, month - 1, day);
       const dow = d.getDay(); // 0 = Dom ... 6 = Sáb
-      return dayLetters[dow] || dayLetters[index] || '?';
+      return dayLetters[dow] || '?';
     }
     return dayLetters[index] || '?';
   };
 
-  // Calcula streak atual (do final voltando no tempo)
-  const calculateCurrentStreak = () => {
-    let streak = 0;
-    for (let i = padded.length - 1; i >= 0; i--) {
-      if (padded[i] || skipsArray[i]) {
-        streak++;
-      } else {
-        break; // Para ao encontrar dia inativo sem skip
-      }
-    }
-    return streak;
-  };
-
-  // Calcula maior streak (máxima sequência em qualquer ponto)
+  // Calcula maior streak (máxima sequência em qualquer ponto), ignorando skips
   const calculateLongestStreak = () => {
     let maxStreak = 0;
     let currentSeq = 0;
-    for (let i = 0; i < padded.length; i++) {
-      if (padded[i] || skipsArray[i]) {
+    for (let i = 0; i < paddedDays.length; i++) {
+      if (paddedDays[i]) {
         currentSeq++;
         maxStreak = Math.max(maxStreak, currentSeq);
-      } else {
-        currentSeq = 0;
+      } else if (!paddedSkips[i]) {
+        currentSeq = 0; // Reseta apenas em inativos não skipped
       }
+      // Se skipped, continua sem resetar nem incrementar
     }
     return maxStreak;
   };
 
-  // Calcula taxa de sucesso (% de dias ativos, excluindo skips)
+  // Calcula taxa de sucesso (% de dias ativos, excluindo skips do total)
   const calculateSuccessRate = () => {
-    const activeDays = padded.filter((day, i) => day && !skipsArray[i]).length;
-    return Math.round((activeDays / totalDays) * 100);
+    const nonSkippedDays = paddedDays.length - paddedSkips.filter(skip => skip).length;
+    const activeDays = paddedDays.filter((day) => day).length;
+    return nonSkippedDays > 0 ? Math.round((activeDays / nonSkippedDays) * 100) : 0;
   };
 
   // Determina se um dia faz parte do streak atual
   const isInCurrentStreak = (index) => {
-    const currentStreak = calculateCurrentStreak();
-    return index >= padded.length - currentStreak;
+    return index >= paddedDays.length - currentStreak;
   };
 
-  const currentStreak = calculateCurrentStreak();
   const longestStreak = calculateLongestStreak();
   const successRate = calculateSuccessRate();
+  
+  console.log('Streak (do componente):', { currentStreak, longestStreak, successRate });
 
   // Determina estilo de cada box
   const getBoxStyle = (index) => {
-    const isActive = padded[index];
-    const isSkipped = skipsArray[index];
+    const isActive = paddedDays[index];
+    const isSkipped = paddedSkips[index];
     const inStreak = isInCurrentStreak(index);
 
     if (isSkipped) {
-      return styles.boxSkipped; // Azul para dias com skip
+      return styles.boxSkipped; // Azul para skipped
     } else if (isActive && inStreak) {
       return styles.boxStreakActive; // Amarelo para ativos no streak atual
     } else if (isActive) {
@@ -81,8 +86,8 @@ export default function DaysStreak({ days = [], skips = [], totalDays = 7, dates
   };
 
   const getBoxTextStyle = (index) => {
-    const isActive = padded[index];
-    const isSkipped = skipsArray[index];
+    const isActive = paddedDays[index];
+    const isSkipped = paddedSkips[index];
     
     if (isActive || isSkipped) {
       return styles.boxTextActive;
@@ -113,13 +118,12 @@ export default function DaysStreak({ days = [], skips = [], totalDays = 7, dates
 
       {/* Grid de dias */}
       <View style={styles.row}>
-        {padded.map((active, i) => (
+        {paddedDays.map((active, i) => (
           <View
             key={i}
             style={[
               styles.box,
               getBoxStyle(i),
-              skipsArray[i] && styles.boxSkippedBorder,
             ]}
           >
             <Text style={[styles.boxText, getBoxTextStyle(i)]}>
@@ -140,7 +144,7 @@ export default function DaysStreak({ days = [], skips = [], totalDays = 7, dates
           <Text style={styles.legendText}>Ativo</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendBox, { backgroundColor: '#3b82f6', borderWidth: 1, borderColor: '#1e40af' }]} />
+          <View style={[styles.legendBox, { backgroundColor: '#3b82f6' }]} />
           <Text style={styles.legendText}>Skip</Text>
         </View>
       </View>
@@ -179,10 +183,6 @@ const styles = StyleSheet.create({
   boxStreakActive: { backgroundColor: '#eab308' },  
   boxSkipped: { backgroundColor: '#3b82f6' },       
   boxInactive: { backgroundColor: '#f3f4f6' },      
-  boxSkippedBorder: { 
-    borderWidth: 2, 
-    borderColor: '#1e40af' 
-  },
   boxText: { fontSize: 11, fontWeight: '700' },
   boxTextActive: { color: '#fff' },
   boxTextInactive: { color: '#9CA3AF' },

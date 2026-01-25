@@ -251,3 +251,75 @@ export const pushAgendaEventoConcluido = async (uid, evento) => {
   // Dispara evento para atualizar dashboard
   dashboardEvents.triggerRefetch();
 };
+
+export const saveAgendaEventosFixos = async (uid, eventosFixos) => {
+  if (!uid || !Array.isArray(eventosFixos)) return;
+  
+  await updateDoc(doc(db, 'Usuarios', uid), {
+    'ferramentas.agenda.eventosFixos': eventosFixos,
+    updatedAt: new Date(),
+  });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
+};
+
+export const saveAgendaEventosFlexiveis = async (uid, eventosFlexiveis) => {
+  if (!uid || !Array.isArray(eventosFlexiveis)) return;
+  
+  await updateDoc(doc(db, 'Usuarios', uid), {
+    'ferramentas.agenda.eventosFlexiveis': eventosFlexiveis,
+    updatedAt: new Date(),
+  });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
+};
+
+export const saveAgendaEventosEssenciais = async (uid, eventosEssenciais) => {
+  if (!uid || !Array.isArray(eventosEssenciais)) return;
+  
+  await updateDoc(doc(db, 'Usuarios', uid), {
+    'ferramentas.agenda.eventosEssenciais': eventosEssenciais,
+    updatedAt: new Date(),
+  });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
+};
+
+export const addAgendaXP = async (uid, xpAmount = 5) => {
+  if (!uid) return;
+  
+  const userDoc = await getDoc(doc(db, 'Usuarios', uid));
+  if (!userDoc.exists()) return;
+  
+  const userData = userDoc.data();
+  const ferramentas = deepMergeDefaults(userData.ferramentas, DEFAULT_FERRAMENTAS);
+  
+  // XP atual da agenda
+  const currentXP = ferramentas.agenda?.nivel?.xpTotal || 0;
+  const newXP = currentXP + xpAmount;
+  
+  // XP total do usuário (soma de todas as ferramentas)
+  const focoXP = ferramentas.foco?.nivel?.xpTotal || 0;
+  const sonoXP = ferramentas.sono?.nivel?.xpTotal || 0;
+  const agendaXP = newXP;
+  const totalUserXP = focoXP + sonoXP + agendaXP;
+  
+  await updateDoc(doc(db, 'Usuarios', uid), {
+    'ferramentas.agenda.nivel.xpTotal': newXP,
+    'ferramentas.agenda.nivel.xpHoje': (ferramentas.agenda?.nivel?.xpHoje || 0) + xpAmount,
+    'ferramentas.agenda.nivel.historico': arrayUnion({
+      xp: xpAmount,
+      at: new Date(),
+      tipo: 'evento_concluido',
+    }),
+    updatedAt: new Date(),
+  });
+  
+  // Dispara evento para atualizar dashboard
+  dashboardEvents.triggerRefetch();
+  
+  return { newXP, totalUserXP };
+};

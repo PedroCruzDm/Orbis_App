@@ -606,18 +606,19 @@ export default function Modo_Foco() {
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.headerIconButton}
-                onPress={() => setShowHistoryModal(true)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <MaterialCommunityIcons name="history" size={24} color="#9CA3AF" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.headerIconButton}
                 onPress={() => setShowPendingModal(true)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <MaterialCommunityIcons name="clipboard-list-outline" size={24} color="#9CA3AF" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.headerIconButton}
+                onPress={() => setShowHistoryModal(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialCommunityIcons name="history" size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
               <View style={styles.timerModeToggle}>

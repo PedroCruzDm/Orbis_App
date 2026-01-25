@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, ActivityIndicator, AppState } from 'react-native';
-import StatsCard from './stats_card.jsx';
-import SleepSummaryCard from './sleep_summary_card.jsx';
-import WeeklyPerformanceChart from './weekly_performance_chart.jsx';
+import ProductivityEvolution from './productivity_evolution.jsx';
+import SleepQualityCard from './sleep_quality_card.jsx';
+import FocusTimeBreakdown from './focus_time_breakdown.jsx';
+import FocusQualityHeatmap from './focus_quality_heatmap.jsx';
+import SleepFocusComparison from './sleep_focus_comparison.jsx';
+import DaysStreak from './status_dia_consecutivos.jsx';
+import RecentActivityList from './recent_activity_list.jsx';
 import { useUserData } from '../../hooks/use_user_data.js';
 import { useDashboardData } from '../../hooks/use_dashboard_data.js';
 import theme from '../../theme/index.js';
@@ -13,6 +17,8 @@ export default function Dashboard() {
   const columns = width >= 900 ? 3 : width >= 520 ? 2 : 1;
   const itemWidth = columns === 1 ? '100%' : columns === 2 ? '48%' : '32%';
   const [period, setPeriod] = useState('Dia');
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const isDay = period === 'Dia';
   const appState = useRef(AppState.currentState);
   
   const { user, loading, error, refetch: refetchUser } = useUserData();
@@ -76,6 +82,22 @@ export default function Dashboard() {
 
   const productivity = calculateProductivity();
 
+  // Modo Dia exibe a semana toda mas destaca o score do dia atual
+  const productivityData = dashboardData?.weeklyData || [];
+  const productivityScore = dashboardData?.currentScore || 0;
+  const comparisonData = dashboardData?.weeklyComparisonData || [];
+
+  const focusCategories = isDay
+    ? dashboardData?.categoriesDay || dashboardData?.categories || []
+    : dashboardData?.categoriesWeek || dashboardData?.categories || [];
+  const focusTotalMinutes = isDay
+    ? dashboardData?.focusSummary?.totalTimeMinutes || 0
+    : dashboardData?.focusSummary?.weekTotalMinutes || dashboardData?.focusSummary?.totalTimeMinutes || 0;
+  const focusTargetMinutes = isDay ? 120 : dashboardData?.weeklyTargetFocusMinutes || 1200;
+  const activities = isDay
+    ? dashboardData?.recentActivitiesToday || []
+    : dashboardData?.recentActivities || [];
+
   if (loading || dashboardLoading || !dashboardData) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -121,58 +143,54 @@ export default function Dashboard() {
         ))}
       </View>
 
-      {period === 'Dia' ? (
-        <>
-          {/* Card de Produtividade em Destaque */}
-          <View style={[styles.gridItem, { width: '100%' }]}> 
-            <StatsCard 
-              title="Produtividade Geral" 
-              value={productivity} 
-              max={100} 
-              description="Baseado em foco e sono"
-              type="gauge"
-              isPrimary={true}
-            />
-          </View>
+      <ProductivityEvolution 
+        weeklyData={productivityData}
+        currentScore={productivityScore}
+        targetScore={dashboardData?.targetScore || 80}
+        period={period}
+      />
 
-          <View style={[styles.gridItem, { width: '100%' }]}> 
-            <SleepSummaryCard score={dashboardData.sleepScoreToday} avg={dashboardData.weekly?.avgSleepScore || 0} />
-          </View>
+      <SleepQualityCard 
+        scoreToday={dashboardData?.sleepScoreToday || 0}
+        weeklyScores={dashboardData?.weeklyScores || []}
+        hoursSlept={dashboardData?.hoursSlept || 0}
+        cycles={dashboardData?.cycles || 0}
+        efficiency={dashboardData?.efficiency || 0}
+        insight={dashboardData?.sleepInsight || ''}
+        period={period}
+      />
 
-          <View style={styles.grid}>
-            {(dashboardData.stats || []).map((s, idx) => (
-              <View
-                key={s.key}
-                style={[styles.gridItem, { width: itemWidth, marginRight: (columns > 1 && (idx % columns) !== columns - 1) ? 12 : 0 }]}
-              >
-                <StatsCard title={s.title} value={s.value} max={s.max} description={s.description} type={s.type} days={s.days} dates={s.dates} />
-              </View>
-            ))}
-          </View>
+      <FocusTimeBreakdown 
+        categories={focusCategories}
+        totalMinutes={focusTotalMinutes}
+        dailyTarget={focusTargetMinutes}
+        period={period}
+      />
 
-          <View style={styles.recentCard}>
-            <View style={styles.recentHeaderRow}>
-              <Text style={styles.sectionTitle}>Atividades de Foco</Text>
-              <Text style={styles.summaryBadge}>
-                {dashboardData.focusSummary?.completedTasks || 0}/{dashboardData.focusSummary?.totalTasks || 0}
-              </Text>
-            </View>
-            {(dashboardData.recentFocus || []).map((r) => (
-              <View key={r.id} style={styles.recentItem}>
-                <View>
-                  <Text style={styles.recentTitle}>{r.title}</Text>
-                  <Text style={styles.recentMeta}>{r.category} • {r.timeSpent}</Text>
-                  <Text style={styles.recentTime}>{r.date}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </>
-      ) : (
-        <View style={[styles.gridItem, { width: '100%' }]}> 
-          <WeeklyPerformanceChart days={dashboardData.weeklyDays} targetFocusMinutes={dashboardData.weeklyTargetFocusMinutes} />
-        </View>
-      )}
+      <FocusQualityHeatmap 
+        heatmapData={dashboardData?.heatmapData || {}}
+        period={period}
+      />
+
+      <SleepFocusComparison 
+        weeklyData={comparisonData}
+        period={period}
+      />
+
+      <DaysStreak 
+        currentStreak={dashboardData?.stats?.find(s => s.key === 'streak')?.value || 0}
+        days={dashboardData?.stats?.find(s => s.key === 'streak')?.days || []}
+        dates={dashboardData?.stats?.find(s => s.key === 'streak')?.dates || []}
+        totalDays={7}
+      />
+      {console.log('=== DASHBOARD LOGS ===') || console.log('Streak stat:', dashboardData?.stats?.find(s => s.key === 'streak')) || null}
+
+      <RecentActivityList 
+        activities={activities}
+        onFilterCategory={setSelectedCategory}
+        selectedCategory={selectedCategory}
+        period={period}
+      />
     </ScrollView>
   );
 }
